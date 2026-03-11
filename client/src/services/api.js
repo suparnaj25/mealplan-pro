@@ -117,6 +117,20 @@ class ApiService {
     return this.request(`/groceries/${listId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ checked }) });
   }
 
+  // Kroger
+  getKrogerStatus() {
+    return this.request('/kroger/status');
+  }
+  getKrogerAuthUrl() {
+    return this.request('/kroger/auth-url');
+  }
+  krogerAutoFill(groceryListId) {
+    return this.request('/kroger/auto-fill', { method: 'POST', body: JSON.stringify({ groceryListId }) });
+  }
+  krogerConfirmCart(selections) {
+    return this.request('/kroger/confirm-cart', { method: 'POST', body: JSON.stringify({ selections }) });
+  }
+
   // Recipes
   searchRecipes(params) {
     const qs = new URLSearchParams(params).toString();

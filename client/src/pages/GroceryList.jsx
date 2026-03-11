@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { ShoppingCart, Check, ExternalLink, Copy, CheckCheck } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ShoppingCart, Check, ExternalLink, Copy, CheckCheck, Zap, X, ArrowRight, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
 
 const STORES = [
@@ -35,6 +35,10 @@ export default function GroceryList() {
   const [currentStore, setCurrentStore] = useState(null);
   const [organicPref, setOrganicPref] = useState('no_preference');
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  const [krogerStatus, setKrogerStatus] = useState(null);
+  const [autoFillResults, setAutoFillResults] = useState(null);
+  const [autoFilling, setAutoFilling] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const storeDropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -50,7 +54,44 @@ export default function GroceryList() {
     }
   }, [showStoreDropdown]);
 
-  useEffect(() => { loadList(); loadStore(); }, []);
+  useEffect(() => { loadList(); loadStore(); loadKrogerStatus(); }, []);
+
+  const loadKrogerStatus = async () => {
+    try { const data = await api.getKrogerStatus(); setKrogerStatus(data); }
+    catch { setKrogerStatus({ connected: false, configured: false }); }
+  };
+
+  const handleAutoFill = async () => {
+    if (!list) return;
+    setAutoFilling(true);
+    try {
+      const data = await api.krogerAutoFill(list.id);
+      setAutoFillResults(data.results);
+    } catch (err) {
+      alert(err.message);
+    } finally { setAutoFilling(false); }
+  };
+
+  const handleConfirmCart = async () => {
+    if (!autoFillResults) return;
+    setConfirming(true);
+    try {
+      const selections = autoFillResults
+        .filter(r => r.selectedProduct?.upc)
+        .map(r => ({ upc: r.selectedProduct.upc, quantity: Math.max(1, Math.ceil(r.quantity || 1)) }));
+      const data = await api.krogerConfirmCart(selections);
+      alert(`✅ ${data.successCount}/${data.totalCount} items added to your Kroger cart! Open the Kroger app to checkout.`);
+      setAutoFillResults(null);
+    } catch (err) { alert(err.message); }
+    finally { setConfirming(false); }
+  };
+
+  const handleConnectKroger = async () => {
+    try {
+      const data = await api.getKrogerAuthUrl();
+      window.open(data.url, '_blank');
+    } catch (err) { alert(err.message); }
+  };
 
   const loadStore = async () => {
     try {
@@ -166,6 +207,85 @@ export default function GroceryList() {
           </button>
         </div>
       </div>
+
+      {/* Kroger Auto-Fill Button (only when Kroger is selected) */}
+      {currentStore === 'kroger' && (
+        <div className="glass-card p-4">
+          {krogerStatus?.connected ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-2">🏪 Kroger Connected</p>
+                <p className="text-xs text-gray-500">Auto-select best products and add to your Kroger cart</p>
+              </div>
+              <button onClick={handleAutoFill} disabled={autoFilling} className="btn-primary flex items-center gap-2 text-sm">
+                {autoFilling ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Zap size={16} />}
+                {autoFilling ? 'Finding products...' : 'Auto-fill Kroger Cart'}
+              </button>
+            </div>
+          ) : krogerStatus?.configured ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">🔗 Connect Your Kroger Account</p>
+                <p className="text-xs text-gray-500">One-time login to enable auto-cart</p>
+              </div>
+              <button onClick={handleConnectKroger} className="btn-primary flex items-center gap-2 text-sm">
+                Connect Kroger <ArrowRight size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="text-center py-2">
+              <p className="text-sm text-gray-500">Kroger API not configured. Add KROGER_CLIENT_ID and KROGER_CLIENT_SECRET to enable auto-cart.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kroger Auto-Fill Results Review */}
+      <AnimatePresence>
+        {autoFillResults && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="glass-card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-sm">🛒 Review Kroger Selections</h3>
+                <p className="text-xs text-gray-500">{autoFillResults.filter(r => r.selectedProduct).length} of {autoFillResults.length} items matched</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setAutoFillResults(null)} className="btn-ghost p-1"><X size={18} /></button>
+              </div>
+            </div>
+            <div className="max-h-96 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800/50">
+              {autoFillResults.map((result, idx) => (
+                <div key={idx} className="px-4 py-3 flex items-center gap-3">
+                  {result.selectedProduct?.image && (
+                    <img src={result.selectedProduct.image} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400">{result.groceryItemName} ({result.quantity} {result.unit})</p>
+                    {result.selectedProduct ? (
+                      <>
+                        <p className="text-sm font-medium truncate">{result.selectedProduct.name}</p>
+                        <p className="text-xs text-gray-500">{result.selectedProduct.brand} · {result.selectedProduct.size} · ${result.selectedProduct.price}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-red-500 italic">No match found</p>
+                    )}
+                  </div>
+                  {result.alternatives?.length > 0 && (
+                    <span className="text-xs text-gray-400">{result.alternatives.length} alt</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+              <button onClick={() => setAutoFillResults(null)} className="btn-secondary text-sm">Cancel</button>
+              <button onClick={handleConfirmCart} disabled={confirming} className="btn-primary flex items-center gap-2 text-sm">
+                {confirming ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShoppingCart size={16} />}
+                {confirming ? 'Adding...' : `Add ${autoFillResults.filter(r => r.selectedProduct).length} items to Kroger Cart`}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Pantry toast */}
       {pantryToast && (
