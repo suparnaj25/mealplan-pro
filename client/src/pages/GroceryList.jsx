@@ -39,6 +39,7 @@ export default function GroceryList() {
   const [autoFillResults, setAutoFillResults] = useState(null);
   const [autoFilling, setAutoFilling] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [cartSuccess, setCartSuccess] = useState(null);
   const storeDropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -80,8 +81,8 @@ export default function GroceryList() {
         .filter(r => r.selectedProduct?.upc)
         .map(r => ({ upc: r.selectedProduct.upc, quantity: Math.max(1, Math.ceil(r.quantity || 1)) }));
       const data = await api.krogerConfirmCart(selections);
-      alert(`✅ ${data.successCount}/${data.totalCount} items added to your Kroger cart! Open the Kroger app to checkout.`);
       setAutoFillResults(null);
+      setCartSuccess({ count: data.successCount, total: data.totalCount });
     } catch (err) { alert(err.message); }
     finally { setConfirming(false); }
   };
@@ -207,6 +208,27 @@ export default function GroceryList() {
           </button>
         </div>
       </div>
+
+      {/* Kroger Cart Success — Go to Kroger */}
+      {cartSuccess && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 text-center space-y-4">
+          <div className="text-4xl">🎉</div>
+          <h3 className="text-lg font-bold">
+            {cartSuccess.count} of {cartSuccess.total} items added to your Kroger cart!
+          </h3>
+          <p className="text-sm text-gray-500">Your cart is ready. Go to Kroger to review and checkout.</p>
+          <div className="flex justify-center gap-3">
+            <a href="https://www.kroger.com/cart" target="_blank" rel="noopener noreferrer"
+              className="btn-primary inline-flex items-center gap-2">
+              <ShoppingCart size={18} /> Go to Kroger Cart →
+            </a>
+            <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
+          </div>
+          <p className="text-xs text-gray-400">
+            Or open the <a href="https://www.kroger.com" target="_blank" rel="noopener noreferrer" className="text-brand-500 underline">Kroger website</a> or Kroger app on your phone
+          </p>
+        </motion.div>
+      )}
 
       {/* Kroger Auto-Fill Button (only when Kroger is selected) */}
       {currentStore === 'kroger' && (
