@@ -55,6 +55,10 @@ export default function Onboarding() {
   const setUser = useAuthStore((s) => s.setUser);
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [krogerZip, setKrogerZip] = useState('');
+  const [krogerLocations, setKrogerLocations] = useState([]);
+  const [krogerLocationId, setKrogerLocationId] = useState(null);
+  const [searchingLocations, setSearchingLocations] = useState(false);
 
   const toggleArray = (section, field, item) => {
     const current = data[section][field] || [];
@@ -72,6 +76,10 @@ export default function Onboarding() {
       await api.updateCuisines(data.cuisines);
       await api.updateSources(data.sources);
       await api.updateStore(data.store);
+      // Save Kroger location if selected
+      if (krogerLocationId && data.store.primaryStore === 'kroger') {
+        try { await api.krogerSetLocation(krogerLocationId); } catch {}
+      }
       await api.completeOnboarding();
       const user = await api.getMe();
       setUser(user);
@@ -275,6 +283,42 @@ export default function Onboarding() {
                 {data.store.primaryStore === store.id && <Check size={20} className="text-brand-500" />}
               </motion.button>
             ))}
+
+            {/* Kroger Location Picker — appears when Kroger is selected */}
+            {data.store.primaryStore === 'kroger' && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl space-y-3">
+                <p className="text-sm font-medium">📍 Select Your Nearest Kroger Store</p>
+                <p className="text-xs text-gray-500">Enter your zip code to find nearby stores</p>
+                {krogerLocationId && <p className="text-xs text-brand-500 font-medium">✓ Store selected</p>}
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Zip code (e.g., 98101)" value={krogerZip} onChange={(e) => setKrogerZip(e.target.value)}
+                    className="input-field text-sm flex-1" maxLength={5} />
+                  <button onClick={async () => {
+                    if (!krogerZip || krogerZip.length < 5) return;
+                    setSearchingLocations(true);
+                    try {
+                      const data = await api.krogerSearchLocations(krogerZip);
+                      setKrogerLocations(data.locations || []);
+                    } catch (err) { console.error(err); }
+                    finally { setSearchingLocations(false); }
+                  }} disabled={searchingLocations} className="btn-secondary text-sm whitespace-nowrap">
+                    {searchingLocations ? '...' : 'Find'}
+                  </button>
+                </div>
+                {krogerLocations.length > 0 && (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {krogerLocations.map((loc) => (
+                      <button key={loc.locationId} onClick={() => { setKrogerLocationId(loc.locationId); setKrogerLocations([]); }}
+                        className={`w-full text-left p-3 rounded-lg text-sm transition-all ${krogerLocationId === loc.locationId ? 'bg-brand-500/10 border border-brand-500' : 'bg-white dark:bg-gray-700 hover:bg-gray-100'}`}>
+                        <p className="font-medium">{loc.chain || 'Kroger'} — {loc.name}</p>
+                        <p className="text-xs text-gray-500">{loc.address?.line1}, {loc.address?.city}, {loc.address?.state}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
           </div>
         );
 
