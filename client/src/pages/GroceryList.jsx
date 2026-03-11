@@ -40,6 +40,7 @@ export default function GroceryList() {
   const [autoFilling, setAutoFilling] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(null);
+  const [expandedItem, setExpandedItem] = useState(null);
   const storeDropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -230,13 +231,13 @@ export default function GroceryList() {
         </motion.div>
       )}
 
-      {/* Kroger Auto-Fill Button (only when Kroger is selected) */}
-      {currentStore === 'kroger' && (
+      {/* Kroger Section (only when Kroger is selected) */}
+      {currentStore === 'kroger' && !autoFillResults && (
         <div className="glass-card p-4">
           {krogerStatus?.connected ? (
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium flex items-center gap-2">🏪 Kroger Connected</p>
+                <p className="text-sm font-medium flex items-center gap-2">🏪 Kroger Connected {krogerStatus.locationId && <span className="text-xs text-gray-400">(Store #{krogerStatus.locationId})</span>}</p>
                 <p className="text-xs text-gray-500">Auto-select best products and add to your Kroger cart</p>
               </div>
               <button onClick={handleAutoFill} disabled={autoFilling} className="btn-primary flex items-center gap-2 text-sm">
@@ -256,58 +257,102 @@ export default function GroceryList() {
             </div>
           ) : (
             <div className="text-center py-2">
-              <p className="text-sm text-gray-500">Kroger API not configured. Add KROGER_CLIENT_ID and KROGER_CLIENT_SECRET to enable auto-cart.</p>
+              <p className="text-sm text-gray-500">Kroger API not configured. Set KROGER_CLIENT_ID and KROGER_CLIENT_SECRET in environment variables.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Kroger Auto-Fill Results Review */}
-      <AnimatePresence>
-        {autoFillResults && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="glass-card overflow-hidden">
-            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+      {/* Kroger Auto-Fill Results — PROMINENT Add to Cart button at top */}
+      {autoFillResults && (
+        <div className="space-y-4">
+          {/* Sticky top CTA — the main action button */}
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            className="glass-card p-4 border-2 border-brand-500 bg-brand-500/5">
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-sm">🛒 Review Kroger Selections</h3>
-                <p className="text-xs text-gray-500">{autoFillResults.filter(r => r.selectedProduct).length} of {autoFillResults.length} items matched</p>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  🛒 {autoFillResults.filter(r => r.selectedProduct).length} items ready
+                </h3>
+                <p className="text-xs text-gray-500">Review below, then add all to your Kroger cart</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setAutoFillResults(null)} className="btn-ghost p-1"><X size={18} /></button>
+                <button onClick={() => setAutoFillResults(null)} className="btn-secondary text-sm">Cancel</button>
+                <button onClick={handleConfirmCart} disabled={confirming} className="btn-primary flex items-center gap-2 animate-pulse">
+                  {confirming ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShoppingCart size={18} />}
+                  {confirming ? 'Adding...' : 'Add All to Kroger Cart'}
+                </button>
               </div>
             </div>
-            <div className="max-h-96 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800/50">
+          </motion.div>
+
+          {/* Item review list with expandable alternatives */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="font-semibold text-sm">Review Selections (tap an item to see alternatives)</h3>
+            </div>
+            <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {autoFillResults.map((result, idx) => (
-                <div key={idx} className="px-4 py-3 flex items-center gap-3">
-                  {result.selectedProduct?.image && (
-                    <img src={result.selectedProduct.image} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-400">{result.groceryItemName} ({result.quantity} {result.unit})</p>
-                    {result.selectedProduct ? (
-                      <>
-                        <p className="text-sm font-medium truncate">{result.selectedProduct.name}</p>
-                        <p className="text-xs text-gray-500">{result.selectedProduct.brand} · {result.selectedProduct.size} · ${result.selectedProduct.price}</p>
-                      </>
+                <div key={idx}>
+                  <button onClick={() => setExpandedItem(expandedItem === idx ? null : idx)}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left">
+                    {result.selectedProduct?.image ? (
+                      <img src={result.selectedProduct.image} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
                     ) : (
-                      <p className="text-sm text-red-500 italic">No match found</p>
+                      <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg flex-shrink-0">🛒</div>
                     )}
-                  </div>
-                  {result.alternatives?.length > 0 && (
-                    <span className="text-xs text-gray-400">{result.alternatives.length} alt</span>
-                  )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400">{result.groceryItemName} ({result.quantity} {result.unit})</p>
+                      {result.selectedProduct ? (
+                        <>
+                          <p className="text-sm font-medium truncate">{result.selectedProduct.name}</p>
+                          <p className="text-xs text-gray-500">{result.selectedProduct.brand} · {result.selectedProduct.size}{result.selectedProduct.price ? ` · $${result.selectedProduct.price}` : ''}</p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-red-500 italic">No match found</p>
+                      )}
+                    </div>
+                    {result.alternatives?.length > 0 && (
+                      <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-gray-500 flex-shrink-0">
+                        {expandedItem === idx ? '▲' : '▼'} {result.alternatives.length} alt
+                      </span>
+                    )}
+                  </button>
+                  {/* Expanded alternatives */}
+                  <AnimatePresence>
+                    {expandedItem === idx && result.alternatives?.length > 0 && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                        className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700">
+                        <p className="px-4 pt-2 text-xs text-gray-400 font-medium">Alternatives — tap to substitute:</p>
+                        {result.alternatives.map((alt, altIdx) => (
+                          <button key={altIdx} onClick={() => {
+                            const updated = [...autoFillResults];
+                            const old = updated[idx].selectedProduct;
+                            updated[idx] = { ...updated[idx], selectedProduct: alt, alternatives: [...updated[idx].alternatives.filter((_, i) => i !== altIdx), old].filter(Boolean) };
+                            setAutoFillResults(updated);
+                            setExpandedItem(null);
+                          }} className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left">
+                            {alt.image ? (
+                              <img src={alt.image} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm truncate">{alt.name}</p>
+                              <p className="text-xs text-gray-500">{alt.brand} · {alt.size}{alt.price ? ` · $${alt.price}` : ''}</p>
+                            </div>
+                            <span className="text-xs text-brand-500 font-medium flex-shrink-0">Select</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ))}
             </div>
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
-              <button onClick={() => setAutoFillResults(null)} className="btn-secondary text-sm">Cancel</button>
-              <button onClick={handleConfirmCart} disabled={confirming} className="btn-primary flex items-center gap-2 text-sm">
-                {confirming ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShoppingCart size={16} />}
-                {confirming ? 'Adding...' : `Add ${autoFillResults.filter(r => r.selectedProduct).length} items to Kroger Cart`}
-              </button>
-            </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
       {/* Pantry toast */}
       {pantryToast && (
