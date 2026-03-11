@@ -47,10 +47,36 @@ router.get('/auth-url', (req, res) => {
 
 // GET /api/kroger/status — check if Kroger is connected
 router.get('/status', (req, res) => {
-  const store = db.prepare('SELECT kroger_access_token, kroger_token_expires_at FROM user_store_preferences WHERE user_id = ?').get(req.user.id);
+  const store = db.prepare('SELECT kroger_access_token, kroger_token_expires_at, kroger_location_id FROM user_store_preferences WHERE user_id = ?').get(req.user.id);
   const connected = !!(store?.kroger_access_token);
   const expired = store?.kroger_token_expires_at ? new Date(store.kroger_token_expires_at) < new Date() : true;
-  res.json({ connected, expired: connected && expired, configured: !!(process.env.KROGER_CLIENT_ID) });
+  res.json({ connected, expired: connected && expired, configured: !!(process.env.KROGER_CLIENT_ID), locationId: store?.kroger_location_id || null });
+});
+
+// GET /api/kroger/locations?zipCode=98101 — search for nearby Kroger stores
+router.get('/locations', async (req, res) => {
+  try {
+    const { zipCode } = req.query;
+    if (!zipCode) return res.status(400).json({ error: 'zipCode query parameter required' });
+    const locations = await kroger.searchLocations(zipCode);
+    res.json({ locations });
+  } catch (error) {
+    console.error('Kroger locations error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// POST /api/kroger/set-location — save preferred Kroger store location
+router.post('/set-location', (req, res) => {
+  try {
+    const { locationId } = req.body;
+    if (!locationId) return res.status(400).json({ error: 'locationId required' });
+    db.prepare('UPDATE user_store_preferences SET kroger_location_id = ? WHERE user_id = ?').run(locationId, req.user.id);
+    res.json({ success: true, locationId });
+  } catch (error) {
+    console.error('Set location error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/kroger/auto-fill — auto-fill cart with grocery items

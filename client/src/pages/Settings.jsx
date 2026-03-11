@@ -78,6 +78,10 @@ export default function Settings() {
   const [varietyPref, setVarietyPref] = useState(5);
   const [organicPref, setOrganicPref] = useState('no_preference');
   const [primaryStore, setPrimaryStore] = useState('amazon_wholefoods');
+  const [krogerZip, setKrogerZip] = useState('');
+  const [krogerLocations, setKrogerLocations] = useState([]);
+  const [krogerLocationId, setKrogerLocationId] = useState(null);
+  const [searchingLocations, setSearchingLocations] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingSection, setSavingSection] = useState(null);
 
@@ -98,6 +102,11 @@ export default function Settings() {
       setVarietyPref(data.cuisines?.variety_preference || 5);
       setOrganicPref(data.store?.organic_preference || 'no_preference');
       setPrimaryStore(data.store?.primary_store || 'amazon_wholefoods');
+      // Load Kroger location
+      try {
+        const kStatus = await api.getKrogerStatus();
+        setKrogerLocationId(kStatus.locationId);
+      } catch {}
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -249,6 +258,47 @@ export default function Settings() {
             </button>
           ))}
         </div>
+
+        {/* Kroger Location Picker */}
+        {primaryStore === 'kroger' && (
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl space-y-3">
+            <p className="text-sm font-medium">📍 Your Kroger Store Location</p>
+            {krogerLocationId && <p className="text-xs text-brand-500">Current: Store #{krogerLocationId}</p>}
+            <div className="flex gap-2">
+              <input type="text" placeholder="Enter your zip code" value={krogerZip} onChange={(e) => setKrogerZip(e.target.value)}
+                className="input-field text-sm flex-1" maxLength={5} />
+              <button onClick={async () => {
+                if (!krogerZip || krogerZip.length < 5) return;
+                setSearchingLocations(true);
+                try {
+                  const data = await api.krogerSearchLocations(krogerZip);
+                  setKrogerLocations(data.locations || []);
+                } catch (err) { alert(err.message); }
+                finally { setSearchingLocations(false); }
+              }} disabled={searchingLocations} className="btn-secondary text-sm whitespace-nowrap">
+                {searchingLocations ? 'Searching...' : 'Find Stores'}
+              </button>
+            </div>
+            {krogerLocations.length > 0 && (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {krogerLocations.map((loc) => (
+                  <button key={loc.locationId} onClick={async () => {
+                    try {
+                      await api.krogerSetLocation(loc.locationId);
+                      setKrogerLocationId(loc.locationId);
+                      setKrogerLocations([]);
+                      setKrogerZip('');
+                    } catch (err) { alert(err.message); }
+                  }} className={`w-full text-left p-3 rounded-lg text-sm transition-all ${krogerLocationId === loc.locationId ? 'bg-brand-500/10 border border-brand-500' : 'bg-white dark:bg-gray-700 hover:bg-gray-100'}`}>
+                    <p className="font-medium">{loc.chain || 'Kroger'} — {loc.name}</p>
+                    <p className="text-xs text-gray-500">{loc.address?.line1}, {loc.address?.city}, {loc.address?.state} {loc.address?.zipCode}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <button onClick={() => saveSection('store', () => api.updateStore({ primaryStore, organicPreference: organicPref }))} className="btn-primary text-sm flex items-center gap-2">
           {savingSection === 'store' ? <Check size={14} /> : <Save size={14} />} {savingSection === 'store' ? 'Saved!' : 'Save Store'}
         </button>

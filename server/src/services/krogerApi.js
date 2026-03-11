@@ -285,4 +285,56 @@ async function autoFillCart(userId, groceryItems, preferences = {}) {
   return results;
 }
 
-module.exports = { getAuthUrl, exchangeCode, getValidToken, searchProducts, addToCart, autoFillCart, findBestProduct };
+/**
+ * Search for Kroger store locations by zip code
+ * Uses client credentials (no user auth needed)
+ */
+async function searchLocations(zipCode) {
+  const clientId = process.env.KROGER_CLIENT_ID;
+  const clientSecret = process.env.KROGER_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Kroger API credentials not configured');
+
+  // Get client credentials token
+  const tokenRes = await fetch(`${KROGER_AUTH}/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'product.compact' }),
+  });
+  if (!tokenRes.ok) throw new Error('Failed to get Kroger client token');
+  const tokenData = await tokenRes.json();
+
+  const params = new URLSearchParams({
+    'filter.zipCode.near': zipCode,
+    'filter.limit': '10',
+    'filter.radiusInMiles': '15',
+  });
+
+  const res = await fetch(`${KROGER_BASE}/locations?${params}`, {
+    headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Accept': 'application/json' },
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Kroger location search failed: ${err}`);
+  }
+
+  const data = await res.json();
+  return (data.data || []).map(loc => ({
+    locationId: loc.locationId,
+    name: loc.name,
+    chain: loc.chain,
+    address: {
+      line1: loc.address?.addressLine1,
+      city: loc.address?.city,
+      state: loc.address?.state,
+      zipCode: loc.address?.zipCode,
+    },
+    phone: loc.phone,
+    hours: loc.hours,
+  }));
+}
+
+module.exports = { getAuthUrl, exchangeCode, getValidToken, searchProducts, addToCart, autoFillCart, findBestProduct, searchLocations };

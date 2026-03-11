@@ -130,6 +130,12 @@ class ApiService {
   krogerConfirmCart(selections) {
     return this.request('/kroger/confirm-cart', { method: 'POST', body: JSON.stringify({ selections }) });
   }
+  krogerSearchLocations(zipCode) {
+    return this.request(`/kroger/locations?zipCode=${zipCode}`);
+  }
+  krogerSetLocation(locationId) {
+    return this.request('/kroger/set-location', { method: 'POST', body: JSON.stringify({ locationId }) });
+  }
 
   // Recipes
   searchRecipes(params) {
