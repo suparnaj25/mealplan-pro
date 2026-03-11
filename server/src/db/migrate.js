@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS user_diet_preferences (
   diets TEXT DEFAULT '[]',
   custom_diet TEXT,
   allergies TEXT DEFAULT '[]',
+  restrictions TEXT DEFAULT '[]',
   UNIQUE(user_id)
 );
 
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS user_store_preferences (
   kroger_refresh_token TEXT,
   kroger_token_expires_at TEXT,
   kroger_location_id TEXT,
+  organic_preference TEXT DEFAULT 'no_preference',
   UNIQUE(user_id)
 );
 
