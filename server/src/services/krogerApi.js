@@ -201,9 +201,14 @@ async function findBestProduct(accessToken, itemName, locationId, preferences = 
 }
 
 /**
- * Add an item to the user's Kroger cart
+ * Add items to the user's Kroger cart
+ * upc should be the product's UPC from items[0].itemId
  */
-async function addToCart(accessToken, productId, quantity = 1) {
+async function addToCart(accessToken, upc, quantity = 1) {
+  console.log(`Kroger cart add: UPC=${upc}, qty=${quantity}`);
+  
+  const body = { items: [{ upc: upc, quantity: Math.max(1, quantity) }] };
+  
   const res = await fetch(`${KROGER_BASE}/cart/add`, {
     method: 'PUT',
     headers: {
@@ -211,14 +216,14 @@ async function addToCart(accessToken, productId, quantity = 1) {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
-    body: JSON.stringify({
-      items: [{ upc: productId, quantity }],
-    }),
+    body: JSON.stringify(body),
   });
 
+  const responseText = await res.text();
+  console.log(`Kroger cart response: ${res.status} ${responseText}`);
+
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to add to cart: ${err}`);
+    throw new Error(`Cart add failed (${res.status}): ${responseText}`);
   }
 
   return true;
@@ -243,6 +248,12 @@ async function autoFillCart(userId, groceryItems, preferences = {}) {
     const match = await findBestProduct(accessToken, item.name, locationId, preferences);
 
     if (match) {
+      // Extract the UPC — Kroger uses items[0].itemId as the UPC for cart operations
+      const firstItem = match.product.items?.[0];
+      const upc = firstItem?.itemId || match.product.upc || match.product.productId;
+      
+      console.log(`Product match: "${item.name}" → "${match.product.description}" UPC=${upc}`);
+      
       results.push({
         groceryItemId: item.id,
         groceryItemName: item.name,
@@ -250,11 +261,11 @@ async function autoFillCart(userId, groceryItems, preferences = {}) {
         unit: item.unit,
         selectedProduct: {
           id: match.product.productId,
-          upc: match.product.upc || match.product.items?.[0]?.itemId,
+          upc: upc,
           name: match.product.description,
           brand: match.product.brand,
-          price: match.product.items?.[0]?.price?.regular,
-          size: match.product.items?.[0]?.size,
+          price: firstItem?.price?.regular,
+          size: firstItem?.size,
           image: match.product.images?.[0]?.sizes?.find(s => s.size === 'medium')?.url || match.product.images?.[0]?.sizes?.[0]?.url,
         },
         alternatives: (match.alternatives || []).slice(0, 3).map(p => ({
