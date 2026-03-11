@@ -125,17 +125,17 @@ export default function MealPlan() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">Your weekly meal schedule</p>
         </div>
-        <div className="flex gap-2">
-          {plan && (
+        {plan && (
+          <div className="flex gap-2">
             <button onClick={handleCreateGroceryList} className="btn-secondary flex items-center gap-2 text-sm">
-              <ShoppingCart size={16} /> Grocery List
+              <ShoppingCart size={16} /> Generate Grocery List
             </button>
-          )}
-          <button onClick={handleGenerate} disabled={generating} className="btn-primary flex items-center gap-2 text-sm">
-            {generating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Sparkles size={16} />}
-            {plan ? 'Regenerate' : 'Generate Plan'}
-          </button>
-        </div>
+            <button onClick={handleGenerate} disabled={generating} className="btn-primary flex items-center gap-2 text-sm">
+              {generating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Sparkles size={16} />}
+              Regenerate Plan
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Week navigator */}
@@ -170,6 +170,16 @@ export default function MealPlan() {
       {/* Meal plan grid */}
       {!loading && plan && (
         <div className="space-y-4">
+          {/* Top grocery list CTA */}
+          <div className="glass-card p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Ready to shop?</p>
+              <p className="text-xs text-gray-500">Generate a grocery list from this meal plan</p>
+            </div>
+            <button onClick={handleCreateGroceryList} className="btn-primary flex items-center gap-2 text-sm">
+              <ShoppingCart size={16} /> Generate Grocery List
+            </button>
+          </div>
           {DAYS.map((day, dayIdx) => (
             <motion.div
               key={dayIdx}
@@ -230,6 +240,16 @@ export default function MealPlan() {
               )}
             </motion.div>
           ))}
+          {/* Bottom grocery list CTA */}
+          <div className="glass-card p-4 flex items-center justify-center gap-3">
+            <button onClick={handleCreateGroceryList} className="btn-primary flex items-center gap-2">
+              <ShoppingCart size={18} /> Generate Grocery List
+            </button>
+            <button onClick={handleGenerate} disabled={generating} className="btn-secondary flex items-center gap-2">
+              {generating ? <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={18} />}
+              Regenerate Meal Plan
+            </button>
+          </div>
         </div>
       )}
     </div>
