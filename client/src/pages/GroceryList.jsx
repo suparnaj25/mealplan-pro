@@ -41,6 +41,8 @@ export default function GroceryList() {
   const [confirming, setConfirming] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(null);
   const [expandedItem, setExpandedItem] = useState(null);
+  const [editingQty, setEditingQty] = useState(null);
+  const [editQtyValue, setEditQtyValue] = useState('');
   const storeDropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -408,15 +410,30 @@ export default function GroceryList() {
                   <p className={`text-sm font-medium ${item.checked ? 'line-through text-gray-400' : ''}`}>
                     {item.name}
                   </p>
-                  {item.quantity > 0 && (
-                    <p className="text-xs text-gray-400">{item.quantity} {item.unit}</p>
+                  <div className="flex items-center gap-2">
+                    {editingQty === item.id ? (
+                      <form onSubmit={(e) => { e.preventDefault(); setItems(prev => prev.map(i => i.id === item.id ? {...i, quantity: parseFloat(editQtyValue) || 0} : i)); setEditingQty(null); }} className="flex items-center gap-1">
+                        <input type="number" value={editQtyValue} onChange={(e) => setEditQtyValue(e.target.value)} className="w-16 px-2 py-0.5 text-xs rounded-lg border border-brand-500 bg-white dark:bg-gray-800 outline-none" step="0.1" autoFocus />
+                        <span className="text-xs text-gray-400">{item.unit}</span>
+                        <button type="submit" className="text-xs text-brand-500 font-medium">✓</button>
+                      </form>
+                    ) : (
+                      <button onClick={() => { setEditingQty(item.id); setEditQtyValue(String(item.quantity || 0)); }}
+                        className="text-xs text-gray-400 hover:text-brand-500 transition-colors">
+                        {item.quantity > 0 ? `${item.quantity} ${item.unit}` : `0 ${item.unit}`}
+                        {!item.checked && ' ✏️'}
+                      </button>
+                    )}
+                  </div>
+                  {item.in_pantry && item.quantity === 0 && (
+                    <p className="text-xs text-brand-500 font-medium">✓ In pantry — tap quantity to add more</p>
                   )}
-                  {item.in_pantry && (
-                    <p className="text-xs text-brand-500 font-medium">✓ In pantry</p>
+                  {item.in_pantry && item.quantity > 0 && (
+                    <p className="text-xs text-amber-500 font-medium">Partially in pantry — buying {item.quantity} more</p>
                   )}
                 </div>
 
-                {!item.checked && currentStore && (
+                {!item.checked && currentStore && item.quantity > 0 && (
                   <a
                     href={getStoreLink(currentStore, item.name, organicPref)}
                     target="_blank"
