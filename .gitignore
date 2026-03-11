@@ -1,0 +1,8 @@
+node_modules/
+dist/
+server/data/mealplan.db
+server/data/mealplan.db-wal
+server/data/mealplan.db-shm
+server/.env
+.DS_Store
+*.log
