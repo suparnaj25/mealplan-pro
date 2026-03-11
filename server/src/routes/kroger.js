@@ -4,35 +4,45 @@ const { authenticateToken } = require('../middleware/auth');
 const kroger = require('../services/krogerApi');
 
 const router = express.Router();
-router.use(authenticateToken);
 
-// GET /api/kroger/auth-url — get Kroger OAuth2 login URL
-router.get('/auth-url', (req, res) => {
-  const redirectUri = process.env.KROGER_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/kroger/callback`;
-  const url = kroger.getAuthUrl(redirectUri);
-  if (!url) return res.status(400).json({ error: 'Kroger API credentials not configured. Set KROGER_CLIENT_ID and KROGER_CLIENT_SECRET.' });
-  res.json({ url, redirectUri });
-});
-
-// GET /api/kroger/callback — OAuth2 callback (exchanged code for tokens)
+// GET /api/kroger/callback — OAuth2 callback (NO auth required — redirect from Kroger)
 router.get('/callback', async (req, res) => {
   try {
-    const { code } = req.query;
-    if (!code) return res.status(400).json({ error: 'Missing authorization code' });
+    const { code, state } = req.query;
+    if (!code) return res.status(400).send('Missing authorization code. Please try connecting again.');
+
+    // state contains the userId passed during auth-url generation
+    const userId = state;
+    if (!userId) return res.status(400).send('Missing user context. Please try connecting again from the app.');
 
     const redirectUri = process.env.KROGER_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/kroger/callback`;
     const tokens = await kroger.exchangeCode(code, redirectUri);
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
     db.prepare('UPDATE user_store_preferences SET kroger_access_token = ?, kroger_refresh_token = ?, kroger_token_expires_at = ? WHERE user_id = ?')
-      .run(tokens.access_token, tokens.refresh_token, expiresAt, req.user.id);
+      .run(tokens.access_token, tokens.refresh_token, expiresAt, userId);
 
-    // Redirect to settings with success
-    res.redirect('/settings?kroger=connected');
+    // Redirect to the app's grocery page with success indicator
+    res.redirect('/groceries?kroger=connected');
   } catch (error) {
     console.error('Kroger callback error:', error);
-    res.redirect('/settings?kroger=error');
+    res.redirect('/groceries?kroger=error');
   }
+});
+
+// All routes below require JWT auth
+router.use(authenticateToken);
+
+// GET /api/kroger/auth-url — get Kroger OAuth2 login URL (includes user ID in state)
+router.get('/auth-url', (req, res) => {
+  const redirectUri = process.env.KROGER_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/kroger/callback`;
+  const clientId = process.env.KROGER_CLIENT_ID;
+  if (!clientId) return res.status(400).json({ error: 'Kroger API credentials not configured. Set KROGER_CLIENT_ID and KROGER_CLIENT_SECRET.' });
+
+  const scopes = 'product.compact cart.basic:write';
+  // Pass user ID in state parameter so callback knows which user to update
+  const url = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scopes)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${req.user.id}`;
+  res.json({ url, redirectUri });
 });
 
 // GET /api/kroger/status — check if Kroger is connected
@@ -49,13 +59,11 @@ router.post('/auto-fill', async (req, res) => {
     const { groceryListId } = req.body;
     if (!groceryListId) return res.status(400).json({ error: 'groceryListId required' });
 
-    // Get grocery items
     const list = db.prepare('SELECT * FROM grocery_lists WHERE id = ? AND user_id = ?').get(groceryListId, req.user.id);
     if (!list) return res.status(404).json({ error: 'Grocery list not found' });
 
     const items = db.prepare('SELECT * FROM grocery_list_items WHERE grocery_list_id = ? AND checked = 0 AND in_pantry = 0').all(groceryListId);
 
-    // Get user preferences
     const storePrefs = db.prepare('SELECT organic_preference FROM user_store_preferences WHERE user_id = ?').get(req.user.id);
     const userPrefs = db.prepare('SELECT budget_preference FROM users WHERE id = ?').get(req.user.id);
 
@@ -74,7 +82,7 @@ router.post('/auto-fill', async (req, res) => {
 // POST /api/kroger/confirm-cart — add all selected products to Kroger cart
 router.post('/confirm-cart', async (req, res) => {
   try {
-    const { selections } = req.body; // [{upc, quantity}]
+    const { selections } = req.body;
     if (!selections || selections.length === 0) return res.status(400).json({ error: 'No selections provided' });
 
     const accessToken = await kroger.getValidToken(req.user.id);
