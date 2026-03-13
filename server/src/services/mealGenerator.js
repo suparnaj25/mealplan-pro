@@ -323,18 +323,25 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Calculate scale factor using a weighted blend of calorie and protein targets
-        // Protein is weighted higher because it's harder to hit without explicit scaling
+        // Calculate scale factor: use the MINIMUM across all macro scale factors
+        // This ensures we NEVER exceed any macro target
+        // Recipe selection (scoring) handles finding the best macro fit;
+        // scaling just fine-tunes portions without overshooting
         const n = pick.nutrition;
         const servings = householdSize;
         let scaleFactor = 1.0;
         if (n.calories && n.calories > 0) {
-          const calScale = mealTarget.calories ? mealTarget.calories / n.calories : 1.0;
-          const protScale = (mealTarget.protein && n.protein && n.protein > 0) ? mealTarget.protein / n.protein : calScale;
-          // Blend: 40% calorie-based, 60% protein-based (prioritize protein fit)
-          scaleFactor = calScale * 0.4 + protScale * 0.6;
-          // Clamp between 0.5x and 2.5x to keep recipes reasonable
-          scaleFactor = Math.max(0.5, Math.min(2.5, scaleFactor));
+          const scaleFactors = [];
+          if (mealTarget.calories && n.calories) scaleFactors.push(mealTarget.calories / n.calories);
+          if (mealTarget.protein && n.protein && n.protein > 0) scaleFactors.push(mealTarget.protein / n.protein);
+          if (mealTarget.carbs && n.carbs && n.carbs > 0) scaleFactors.push(mealTarget.carbs / n.carbs);
+          if (mealTarget.fat && n.fat && n.fat > 0) scaleFactors.push(mealTarget.fat / n.fat);
+          // Use the minimum to avoid exceeding any target
+          if (scaleFactors.length > 0) {
+            scaleFactor = Math.min(...scaleFactors);
+          }
+          // Clamp between 0.7x and 1.5x — keep portions reasonable
+          scaleFactor = Math.max(0.7, Math.min(1.5, scaleFactor));
           // Round to 1 decimal place
           scaleFactor = Math.round(scaleFactor * 10) / 10;
         }
