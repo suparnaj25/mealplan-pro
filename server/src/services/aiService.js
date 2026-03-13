@@ -337,7 +337,7 @@ async function nutritionInsights(userId, planId) {
 
   const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(userId);
   const items = db.prepare(`
-    SELECT mpi.day_of_week, mpi.meal_type, r.name as recipe_name, r.nutrition, r.ingredients
+    SELECT mpi.day_of_week, mpi.meal_type, mpi.servings, r.name as recipe_name, r.nutrition, r.ingredients
     FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id
     WHERE mpi.meal_plan_id = ?
     ORDER BY mpi.day_of_week
@@ -349,12 +349,13 @@ async function nutritionInsights(userId, planId) {
     const day = days[item.day_of_week];
     if (!dailyNutrition[day]) dailyNutrition[day] = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, meals: [] };
     const n = parseJSON(item.nutrition, {});
-    dailyNutrition[day].calories += n.calories || 0;
-    dailyNutrition[day].protein += n.protein || 0;
-    dailyNutrition[day].carbs += n.carbs || 0;
-    dailyNutrition[day].fat += n.fat || 0;
-    dailyNutrition[day].fiber += n.fiber || 0;
-    dailyNutrition[day].meals.push(item.recipe_name);
+    const servings = item.servings || 1;
+    dailyNutrition[day].calories += (n.calories || 0) * servings;
+    dailyNutrition[day].protein += (n.protein || 0) * servings;
+    dailyNutrition[day].carbs += (n.carbs || 0) * servings;
+    dailyNutrition[day].fat += (n.fat || 0) * servings;
+    dailyNutrition[day].fiber += (n.fiber || 0) * servings;
+    dailyNutrition[day].meals.push(`${item.recipe_name} (${servings} srv)`);
   }
 
   const targetMacros = macros ? {

@@ -197,7 +197,7 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
  * 5. Pick the best-scoring recipe (with some randomness to avoid monotony)
  */
 async function generateMealPlan(preferences) {
-  const { diets, macros, ingredients, cuisines, mealStructure } = preferences;
+  const { diets, macros, ingredients, cuisines, mealStructure, householdSize = 1 } = preferences;
 
   const mealTypes = [];
   if (mealStructure.breakfast) mealTypes.push('breakfast');
@@ -220,8 +220,8 @@ async function generateMealPlan(preferences) {
     normalizedProportions[mt] = (MEAL_MACRO_PROPORTIONS[mt] || 0.25) / activePropTotal;
   }
 
-  console.log(`🍽️  Generating optimized meal plan: ${mealTypes.join(', ')}`);
-  console.log(`📊 Daily targets: ${dailyTargets.calories} cal, ${dailyTargets.protein}g P, ${dailyTargets.carbs}g C, ${dailyTargets.fat}g F`);
+  console.log(`🍽️  Generating optimized meal plan: ${mealTypes.join(', ')} for ${householdSize} people`);
+  console.log(`📊 Daily targets (per person): ${dailyTargets.calories} cal, ${dailyTargets.protein}g P, ${dailyTargets.carbs}g C, ${dailyTargets.fat}g F`);
 
   const items = [];
   const usedRecipeIds = new Set();
@@ -323,19 +323,23 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Update daily running totals
+        // Servings = household size (each person eats 1 serving)
+        // The recipe's per-serving nutrition is what each person consumes
         const n = pick.nutrition;
+        const servings = householdSize;
+
+        // Update daily running totals (per-person: each person eats 1 serving)
         dayTotals.calories += n.calories || 0;
         dayTotals.protein += n.protein || 0;
         dayTotals.carbs += n.carbs || 0;
         dayTotals.fat += n.fat || 0;
 
-        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings: 1 });
+        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings });
       }
     }
 
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    console.log(`  ${days[day]}: ${dayTotals.calories} cal, ${dayTotals.protein}g P, ${dayTotals.carbs}g C, ${dayTotals.fat}g F`);
+    console.log(`  ${days[day]}: ${dayTotals.calories} cal/person, ${dayTotals.protein}g P, ${dayTotals.carbs}g C, ${dayTotals.fat}g F (${householdSize} servings each meal)`);
   }
 
   console.log(`✅ Generated ${items.length} optimized meals`);
