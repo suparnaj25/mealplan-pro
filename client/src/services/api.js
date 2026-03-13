@@ -137,6 +137,23 @@ class ApiService {
     return this.request('/kroger/set-location', { method: 'POST', body: JSON.stringify({ locationId }) });
   }
 
+  // User Recipes (My Recipes)
+  getUserRecipes() {
+    return this.request('/user-recipes');
+  }
+  getUserRecipe(id) {
+    return this.request(`/user-recipes/${id}`);
+  }
+  createUserRecipe(data) {
+    return this.request('/user-recipes', { method: 'POST', body: JSON.stringify(data) });
+  }
+  updateUserRecipe(id, data) {
+    return this.request(`/user-recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  deleteUserRecipe(id) {
+    return this.request(`/user-recipes/${id}`, { method: 'DELETE' });
+  }
+
   // Recipes
   searchRecipes(params) {
     const qs = new URLSearchParams(params).toString();

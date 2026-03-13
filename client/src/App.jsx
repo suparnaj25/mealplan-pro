@@ -8,6 +8,7 @@ import MealPlan from './pages/MealPlan';
 import GroceryList from './pages/GroceryList';
 import Pantry from './pages/Pantry';
 import Settings from './pages/Settings';
+import MyRecipes from './pages/MyRecipes';
 import RecipeDetail from './pages/RecipeDetail';
 
 function ProtectedRoute({ children }) {
@@ -67,6 +68,7 @@ export default function App() {
         }
       >
         <Route index element={<MealPlan />} />
+        <Route path="my-recipes" element={<MyRecipes />} />
         <Route path="groceries" element={<GroceryList />} />
         <Route path="pantry" element={<Pantry />} />
         <Route path="settings" element={<Settings />} />

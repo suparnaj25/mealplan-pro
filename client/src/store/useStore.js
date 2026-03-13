@@ -76,6 +76,61 @@ export const useOnboardingStore = create((set) => ({
     })),
 }));
 
+export const useUserRecipesStore = create((set) => ({
+  recipes: [],
+  loading: false,
+  error: null,
+
+  fetchRecipes: async () => {
+    set({ loading: true, error: null });
+    try {
+      const data = await api.getUserRecipes();
+      set({ recipes: data.recipes, loading: false });
+    } catch (err) {
+      set({ error: err.message, loading: false });
+    }
+  },
+
+  createRecipe: async (recipeData) => {
+    set({ error: null });
+    try {
+      const data = await api.createUserRecipe(recipeData);
+      set((state) => ({ recipes: [data.recipe, ...state.recipes] }));
+      return data.recipe;
+    } catch (err) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  updateRecipe: async (id, recipeData) => {
+    set({ error: null });
+    try {
+      const data = await api.updateUserRecipe(id, recipeData);
+      set((state) => ({
+        recipes: state.recipes.map((r) => (r.id === id ? data.recipe : r)),
+      }));
+      return data.recipe;
+    } catch (err) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  deleteRecipe: async (id) => {
+    set({ error: null });
+    try {
+      await api.deleteUserRecipe(id);
+      set((state) => ({
+        recipes: state.recipes.filter((r) => r.id !== id),
+      }));
+    } catch (err) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+}));
+
 export const useThemeStore = create((set) => ({
   dark: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches),
   toggle: () =>

@@ -170,6 +170,24 @@ CREATE TABLE IF NOT EXISTS grocery_list_items (
   amazon_search_url TEXT,
   store_product_id TEXT
 );
+
+CREATE TABLE IF NOT EXISTS user_recipes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  cuisine TEXT,
+  meal_type TEXT DEFAULT 'dinner',
+  ingredients TEXT NOT NULL DEFAULT '[]',
+  instructions TEXT NOT NULL DEFAULT '[]',
+  prep_time_minutes INTEGER,
+  cook_time_minutes INTEGER,
+  servings INTEGER DEFAULT 4,
+  tags TEXT DEFAULT '[]',
+  source_text TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 console.log('🔄 Running database migrations...');

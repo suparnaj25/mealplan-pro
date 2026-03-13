@@ -10,6 +10,7 @@ const pantryRoutes = require('./routes/pantry');
 const groceriesRoutes = require('./routes/groceries');
 const recipesRoutes = require('./routes/recipes');
 const krogerRoutes = require('./routes/kroger');
+const userRecipesRoutes = require('./routes/userRecipes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,7 @@ app.use('/api/pantry', pantryRoutes);
 app.use('/api/groceries', groceriesRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/kroger', krogerRoutes);
+app.use('/api/user-recipes', userRecipesRoutes);
 
 // Serve static React build in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut } from 'lucide-react';
+import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat } from 'lucide-react';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 
 const navItems = [
   { path: '/', icon: CalendarDays, label: 'Meals' },
+  { path: '/my-recipes', icon: ChefHat, label: 'Recipes' },
   { path: '/groceries', icon: ShoppingCart, label: 'Groceries' },
   { path: '/pantry', icon: Package, label: 'Pantry' },
   { path: '/settings', icon: Settings, label: 'Settings' },
