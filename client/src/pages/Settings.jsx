@@ -5,6 +5,13 @@ import { api } from '../services/api';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 import TagInput from '../components/TagInput';
 
+const MACRO_PRESETS = {
+  balanced: { calories: 2000, proteinG: 150, carbsG: 200, fatG: 67 },
+  high_protein: { calories: 2200, proteinG: 200, carbsG: 165, fatG: 73 },
+  keto: { calories: 1800, proteinG: 113, carbsG: 23, fatG: 140 },
+  low_carb: { calories: 1800, proteinG: 158, carbsG: 90, fatG: 100 },
+};
+
 const RESTRICTIONS = ['Vegan', 'Vegetarian', 'Pescatarian', 'Gluten-Free', 'Dairy-Free', 'Nut-Free', 'Halal', 'Kosher'];
 const DIET_PREFS = ['Keto', 'Paleo', 'Mediterranean', 'Whole30', 'Low-Carb', 'Low-Fat', 'DASH', 'Low-Sodium'];
 const ALLERGIES = ['Peanuts', 'Tree Nuts', 'Shellfish', 'Fish', 'Eggs', 'Milk', 'Wheat', 'Soy', 'Sesame'];
@@ -76,6 +83,7 @@ export default function Settings() {
   const [favCuisines, setFavCuisines] = useState([]);
   const [avoidedCuisines, setAvoidedCuisines] = useState([]);
   const [varietyPref, setVarietyPref] = useState(5);
+  const [macros, setMacros] = useState({ calories: 2000, proteinG: 150, carbsG: 200, fatG: 67, macroPreset: 'balanced' });
   const [organicPref, setOrganicPref] = useState('no_preference');
   const [primaryStore, setPrimaryStore] = useState('amazon_wholefoods');
   const [krogerZip, setKrogerZip] = useState('');
@@ -100,6 +108,13 @@ export default function Settings() {
       setFavCuisines(ensureArray(data.cuisines?.favorite_cuisines));
       setAvoidedCuisines(ensureArray(data.cuisines?.avoided_cuisines));
       setVarietyPref(data.cuisines?.variety_preference || 5);
+      setMacros({
+        calories: data.macros?.calories || 2000,
+        proteinG: data.macros?.protein_g || 150,
+        carbsG: data.macros?.carbs_g || 200,
+        fatG: data.macros?.fat_g || 67,
+        macroPreset: data.macros?.macro_preset || 'balanced',
+      });
       setOrganicPref(data.store?.organic_preference || 'no_preference');
       setPrimaryStore(data.store?.primary_store || 'amazon_wholefoods');
       // Load Kroger location
@@ -180,6 +195,50 @@ export default function Settings() {
         </div>
         <button onClick={() => saveSection('diets', () => api.updateDiets({ diets, allergies, restrictions, customDiet }))} className="btn-primary text-sm flex items-center gap-2">
           {savingSection === 'diets' ? <Check size={14} /> : <Save size={14} />} {savingSection === 'diets' ? 'Saved!' : 'Save Diet Prefs'}
+        </button>
+      </Section>
+
+      {/* Macros */}
+      <Section icon={Gauge} title="Macro Targets">
+        <p className="text-xs text-gray-500 mb-3">Set your daily nutrition targets. Your meal plan will be optimized to match these goals.</p>
+        <div>
+          <label className="block text-xs font-medium mb-1.5 text-gray-500">Quick Presets</label>
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(MACRO_PRESETS).map(([key, vals]) => (
+              <button key={key} onClick={() => setMacros({ ...vals, macroPreset: key })}
+                className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${macros.macroPreset === key ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                {key.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+        </div>
+        {[
+          { k: 'calories', l: 'Daily Calories', u: 'kcal', max: 4000, color: 'text-orange-500' },
+          { k: 'proteinG', l: 'Protein', u: 'g', max: 300, color: 'text-blue-500' },
+          { k: 'carbsG', l: 'Carbs', u: 'g', max: 400, color: 'text-green-500' },
+          { k: 'fatG', l: 'Fat', u: 'g', max: 200, color: 'text-yellow-500' },
+        ].map(({ k, l, u, max, color }) => (
+          <div key={k}>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="font-medium">{l}</span>
+              <span className={`${color} font-semibold`}>{macros[k]} {u}</span>
+            </div>
+            <input type="range" min={0} max={max} value={macros[k]}
+              onChange={(e) => setMacros({ ...macros, [k]: parseInt(e.target.value), macroPreset: 'custom' })}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-brand-500" />
+          </div>
+        ))}
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 mt-2">
+          <p className="text-xs text-gray-500 mb-1">Daily Summary</p>
+          <div className="flex justify-between text-sm">
+            <span className="text-orange-500 font-semibold">{macros.calories} kcal</span>
+            <span className="text-blue-500 font-semibold">{macros.proteinG}g P</span>
+            <span className="text-green-500 font-semibold">{macros.carbsG}g C</span>
+            <span className="text-yellow-500 font-semibold">{macros.fatG}g F</span>
+          </div>
+        </div>
+        <button onClick={() => saveSection('macros', () => api.updateMacros(macros))} className="btn-primary text-sm flex items-center gap-2">
+          {savingSection === 'macros' ? <Check size={14} /> : <Save size={14} />} {savingSection === 'macros' ? 'Saved! Regenerate your meal plan to apply.' : 'Save Macro Targets'}
         </button>
       </Section>
 
