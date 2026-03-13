@@ -1,7 +1,7 @@
 const db = require('../db/connection');
 const { v4: uuidv4 } = require('uuid');
 
-// ── Restriction rules (unchanged) ──
+// ── Restriction rules ──
 const RESTRICTION_EXCLUDE_RULES = {
   'Vegan': {
     exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
@@ -51,7 +51,71 @@ function recipePassesRestrictions(recipe, restrictions) {
   return true;
 }
 
-// ── Dynamic recipe fetching from TheMealDB (free, no API key) ──
+// ── Macro-proportional targets per meal type ──
+// These represent what fraction of daily macros each meal should aim for
+const MEAL_MACRO_PROPORTIONS = {
+  breakfast: 0.25,
+  lunch: 0.35,
+  dinner: 0.35,
+  snack: 0.05,
+};
+
+/**
+ * Score a recipe based on how well its nutrition fits the target macros for this meal slot.
+ * Lower score = better fit. Score of 0 = perfect match.
+ * Uses normalized percentage deviation across all macros.
+ */
+function scoreRecipeNutrition(recipeNutrition, targetMacros) {
+  if (!targetMacros || !targetMacros.calories) return 0; // No targets = all equal
+
+  const n = recipeNutrition || {};
+  let totalDeviation = 0;
+  let factors = 0;
+
+  // Calorie fit (most important — weight 2x)
+  if (targetMacros.calories > 0 && n.calories) {
+    const calDev = Math.abs(n.calories - targetMacros.calories) / targetMacros.calories;
+    totalDeviation += calDev * 2;
+    factors += 2;
+  }
+
+  // Protein fit (important for fitness goals — weight 1.5x)
+  if (targetMacros.protein > 0 && n.protein) {
+    const protDev = Math.abs(n.protein - targetMacros.protein) / targetMacros.protein;
+    totalDeviation += protDev * 1.5;
+    factors += 1.5;
+  }
+
+  // Carbs fit
+  if (targetMacros.carbs > 0 && n.carbs) {
+    const carbDev = Math.abs(n.carbs - targetMacros.carbs) / targetMacros.carbs;
+    totalDeviation += carbDev;
+    factors += 1;
+  }
+
+  // Fat fit
+  if (targetMacros.fat > 0 && n.fat) {
+    const fatDev = Math.abs(n.fat - targetMacros.fat) / targetMacros.fat;
+    totalDeviation += fatDev;
+    factors += 1;
+  }
+
+  return factors > 0 ? totalDeviation / factors : 0;
+}
+
+/**
+ * Score recipe for variety — penalize if cuisine or key ingredients repeat too much
+ */
+function scoreVariety(recipe, usedCuisines, usedRecipeIds) {
+  let penalty = 0;
+  const cuisine = recipe.cuisine || 'Unknown';
+  const cuisineCount = usedCuisines[cuisine] || 0;
+  if (cuisineCount >= 2) penalty += 0.3; // Penalize 3rd+ use of same cuisine
+  if (cuisineCount >= 3) penalty += 0.5;
+  return penalty;
+}
+
+// ── Dynamic recipe fetching from TheMealDB ──
 const MEALDB_SEARCH_TERMS = {
   breakfast: ['omelette', 'pancake', 'porridge', 'smoothie', 'toast', 'muffin', 'fruit'],
   lunch: ['salad', 'soup', 'sandwich', 'wrap', 'bowl', 'rice', 'pasta'],
@@ -105,7 +169,6 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
         servings: 4,
       };
 
-      // Cache in DB
       try {
         db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, image_url, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(recipe.id, recipe.source, recipe.external_id, recipe.name, recipe.description, recipe.cuisine, recipe.diet_tags, recipe.meal_type, recipe.ingredients, recipe.instructions, recipe.nutrition, recipe.image_url, recipe.prep_time_minutes, recipe.cook_time_minutes, recipe.servings);
@@ -113,7 +176,6 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
       } catch (e) { /* duplicate, skip */ }
     }
 
-    // Filter by restrictions
     return newRecipes.filter(r => {
       const fullRecipe = db.prepare('SELECT id, ingredients FROM recipes WHERE id = ?').get(r.id);
       return fullRecipe && recipePassesRestrictions(fullRecipe, restrictions);
@@ -124,6 +186,16 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
   }
 }
 
+/**
+ * Generate a nutrition-optimized weekly meal plan.
+ * 
+ * Algorithm:
+ * 1. Calculate per-meal macro targets based on daily targets and meal proportions
+ * 2. For each day, track running macro totals
+ * 3. For the last meal of each day, adjust target to fill the gap (ensures daily totals are close)
+ * 4. Score all candidate recipes by nutrition fit + variety + diet preference
+ * 5. Pick the best-scoring recipe (with some randomness to avoid monotony)
+ */
 async function generateMealPlan(preferences) {
   const { diets, macros, ingredients, cuisines, mealStructure } = preferences;
 
@@ -133,8 +205,27 @@ async function generateMealPlan(preferences) {
   if (mealStructure.dinner) mealTypes.push('dinner');
   if (mealStructure.snacks) mealTypes.push('snack');
 
+  // Daily macro targets from user preferences
+  const dailyTargets = {
+    calories: macros?.calories || 2000,
+    protein: macros?.protein_g || 150,
+    carbs: macros?.carbs_g || 200,
+    fat: macros?.fat_g || 67,
+  };
+
+  // Recalculate proportions based on active meal types
+  const activePropTotal = mealTypes.reduce((sum, mt) => sum + (MEAL_MACRO_PROPORTIONS[mt] || 0.25), 0);
+  const normalizedProportions = {};
+  for (const mt of mealTypes) {
+    normalizedProportions[mt] = (MEAL_MACRO_PROPORTIONS[mt] || 0.25) / activePropTotal;
+  }
+
+  console.log(`🍽️  Generating optimized meal plan: ${mealTypes.join(', ')}`);
+  console.log(`📊 Daily targets: ${dailyTargets.calories} cal, ${dailyTargets.protein}g P, ${dailyTargets.carbs}g C, ${dailyTargets.fat}g F`);
+
   const items = [];
   const usedRecipeIds = new Set();
+  const usedCuisines = {};
   const restrictions = parseJSON(diets.restrictions, []);
   const dietPrefs = parseJSON(diets.diets, []);
 
@@ -143,42 +234,111 @@ async function generateMealPlan(preferences) {
     try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
   }
 
-  for (let day = 0; day < 7; day++) {
-    for (const mealType of mealTypes) {
-      // Get ALL recipes (local + newly cached from internet)
-      const allRecipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients FROM recipes WHERE meal_type = ?').all(mealType);
+  // Pre-load all recipes with nutrition data
+  const recipeCache = {};
+  for (const mt of mealTypes) {
+    recipeCache[mt] = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition FROM recipes WHERE meal_type = ?').all(mt);
+  }
 
+  for (let day = 0; day < 7; day++) {
+    // Track running daily nutrition totals
+    const dayTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+    for (let mealIdx = 0; mealIdx < mealTypes.length; mealIdx++) {
+      const mealType = mealTypes[mealIdx];
+      const isLastMeal = mealIdx === mealTypes.length - 1;
+
+      // Calculate target for this meal slot
+      let mealTarget;
+      if (isLastMeal) {
+        // Last meal of the day: fill the gap to reach daily targets
+        mealTarget = {
+          calories: Math.max(100, dailyTargets.calories - dayTotals.calories),
+          protein: Math.max(5, dailyTargets.protein - dayTotals.protein),
+          carbs: Math.max(5, dailyTargets.carbs - dayTotals.carbs),
+          fat: Math.max(2, dailyTargets.fat - dayTotals.fat),
+        };
+      } else {
+        // Proportional target for this meal type
+        mealTarget = {
+          calories: dailyTargets.calories * normalizedProportions[mealType],
+          protein: dailyTargets.protein * normalizedProportions[mealType],
+          carbs: dailyTargets.carbs * normalizedProportions[mealType],
+          fat: dailyTargets.fat * normalizedProportions[mealType],
+        };
+      }
+
+      const allRecipes = recipeCache[mealType] || [];
       let candidates = allRecipes.filter(r => !usedRecipeIds.has(r.id));
 
+      // Apply dietary restrictions
       if (restrictions.length > 0) {
         candidates = candidates.filter(recipe => recipePassesRestrictions(recipe, restrictions));
       }
 
-      if (dietPrefs.length > 0 && candidates.length > 3) {
-        const preferred = candidates.filter(r => {
-          const tags = parseJSON(r.diet_tags, []).map(t => t.toLowerCase());
-          return dietPrefs.some(d => tags.includes(d.toLowerCase()));
-        });
-        if (preferred.length > 0) candidates = preferred;
-      }
-
+      // Fallback: allow reuse if no unused candidates
       if (candidates.length === 0) {
-        candidates = allRecipes;
-        if (restrictions.length > 0) {
-          candidates = candidates.filter(recipe => recipePassesRestrictions(recipe, restrictions));
-        }
+        candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
       }
 
       if (candidates.length === 0) continue;
 
-      const recipe = candidates[Math.floor(Math.random() * candidates.length)];
-      if (recipe) {
-        usedRecipeIds.add(recipe.id);
-        items.push({ dayOfWeek: day, mealType, recipeId: recipe.id, servings: 1 });
+      // Score each candidate
+      const scored = candidates.map(recipe => {
+        const nutrition = parseJSON(recipe.nutrition, {});
+        const tags = parseJSON(recipe.diet_tags, []).map(t => t.toLowerCase());
+
+        // Nutrition fit score (lower = better, 0 = perfect)
+        const nutritionScore = scoreRecipeNutrition(nutrition, mealTarget);
+
+        // Variety penalty
+        const varietyPenalty = scoreVariety(recipe, usedCuisines, usedRecipeIds);
+
+        // Diet preference bonus (negative = bonus)
+        let dietBonus = 0;
+        if (dietPrefs.length > 0) {
+          const matches = dietPrefs.some(d => tags.includes(d.toLowerCase()));
+          if (matches) dietBonus = -0.15; // Bonus for matching preferred diet
+        }
+
+        // Total score (lower = better)
+        const totalScore = nutritionScore + varietyPenalty + dietBonus;
+
+        return { recipe, totalScore, nutrition };
+      }).sort((a, b) => a.totalScore - b.totalScore);
+
+      // Pick from top 3 to maintain some variety (weighted toward #1)
+      const topN = Math.min(3, scored.length);
+      const weights = [0.6, 0.25, 0.15]; // Probability weights for top 3
+      let roll = Math.random();
+      let pickIdx = 0;
+      for (let i = 0; i < topN; i++) {
+        roll -= weights[i];
+        if (roll <= 0) { pickIdx = i; break; }
+      }
+
+      const pick = scored[pickIdx];
+      if (pick) {
+        usedRecipeIds.add(pick.recipe.id);
+        const cuisine = pick.recipe.cuisine || 'Unknown';
+        usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
+
+        // Update daily running totals
+        const n = pick.nutrition;
+        dayTotals.calories += n.calories || 0;
+        dayTotals.protein += n.protein || 0;
+        dayTotals.carbs += n.carbs || 0;
+        dayTotals.fat += n.fat || 0;
+
+        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings: 1 });
       }
     }
+
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    console.log(`  ${days[day]}: ${dayTotals.calories} cal, ${dayTotals.protein}g P, ${dayTotals.carbs}g C, ${dayTotals.fat}g F`);
   }
 
+  console.log(`✅ Generated ${items.length} optimized meals`);
   return items;
 }
 
