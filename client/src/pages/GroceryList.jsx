@@ -177,39 +177,43 @@ export default function GroceryList() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="section-title flex items-center gap-2">
-            <ShoppingCart className="text-brand-500" size={28} />
-            Grocery List
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {checkedCount}/{totalCount} items checked · {needToBuy.length} to buy
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {/* Store selector */}
-          <div className="relative" ref={storeDropdownRef}>
-            <button onClick={() => setShowStoreDropdown(!showStoreDropdown)} className="btn-secondary flex items-center gap-2 text-sm">
-              <span>{STORES.find(s => s.id === currentStore)?.icon || '🛒'}</span>
-              <span className="hidden sm:inline">{STORES.find(s => s.id === currentStore)?.name || 'Store'}</span>
-            </button>
-            {showStoreDropdown && (
-              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 w-56 overflow-hidden">
-                {STORES.map(store => (
-                  <button key={store.id} onClick={() => handleStoreChange(store.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${currentStore === store.id ? 'bg-brand-500/10 text-brand-600' : ''}`}>
-                    <span>{store.icon}</span> {store.name}
-                    {currentStore === store.id && <Check size={14} className="ml-auto text-brand-500" />}
-                  </button>
-                ))}
-              </div>
-            )}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="section-title flex items-center gap-2">
+              <ShoppingCart className="text-brand-500" size={28} />
+              Grocery List
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {checkedCount}/{totalCount} items checked · {needToBuy.length} to buy
+            </p>
           </div>
-          <button onClick={handleCopyList} className="btn-secondary flex items-center gap-2 text-sm">
+          <button onClick={handleCopyList} className="btn-secondary flex items-center gap-2 text-sm flex-shrink-0">
             {copied ? <CheckCheck size={16} className="text-brand-500" /> : <Copy size={16} />}
-            {copied ? 'Copied!' : 'Copy List'}
+            <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy List'}</span>
           </button>
+        </div>
+
+        {/* Store selector — full-width on mobile */}
+        <div className="relative" ref={storeDropdownRef}>
+          <button onClick={() => setShowStoreDropdown(!showStoreDropdown)} className="btn-secondary flex items-center gap-2 text-sm w-full sm:w-auto justify-between sm:justify-start">
+            <span className="flex items-center gap-2">
+              <span>{STORES.find(s => s.id === currentStore)?.icon || '🛒'}</span>
+              <span>{STORES.find(s => s.id === currentStore)?.name || 'Select Store'}</span>
+            </span>
+            <span className="text-gray-400 text-xs">▼</span>
+          </button>
+          {showStoreDropdown && (
+            <div className="absolute left-0 right-0 sm:right-auto sm:left-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 sm:w-56 overflow-hidden max-h-72 overflow-y-auto">
+              {STORES.map(store => (
+                <button key={store.id} onClick={() => handleStoreChange(store.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${currentStore === store.id ? 'bg-brand-500/10 text-brand-600' : ''}`}>
+                  <span>{store.icon}</span> {store.name}
+                  {currentStore === store.id && <Check size={14} className="ml-auto text-brand-500" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
