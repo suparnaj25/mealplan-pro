@@ -31,6 +31,7 @@ const STORES = [
   { id: 'costco', name: 'Costco', icon: '📦', tier: 'deep_link' },
   { id: 'safeway', name: 'Safeway', icon: '🛍️', tier: 'deep_link' },
   { id: 'trader_joes', name: "Trader Joe's", icon: '🌺', tier: 'list_export' },
+  { id: 'heb', name: 'H-E-B', icon: '🔴', tier: 'deep_link' },
 ];
 const MACRO_PRESETS = {
   balanced: { calories: 2000, proteinG: 150, carbsG: 200, fatG: 67 },
