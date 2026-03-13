@@ -60,6 +60,13 @@ const STORE_CONFIGS = {
     color: '#DA291C',
     tier: 'list_export',
   },
+  heb: {
+    name: 'H-E-B',
+    icon: '🔴',
+    searchUrl: (query) => `https://www.heb.com/search/?q=${encodeURIComponent(query)}`,
+    color: '#EE1921',
+    tier: 'deep_link',
+  },
 };
 
 /**

@@ -1,9 +1,12 @@
 const path = require('path');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 const recipes = require('../data/additional-recipes.json');
 
-const db = new Database(path.join(__dirname, '..', '..', 'data', 'mealplan.db'));
+const dataDir = process.env.DATABASE_PATH || path.join(__dirname, '..', '..', 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+const db = new Database(path.join(dataDir, 'mealplan.db'));
 db.pragma('journal_mode = WAL');
 
 console.log('🌱 Seeding additional recipes...');
