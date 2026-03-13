@@ -375,30 +375,46 @@ async function nutritionInsights(userId, planId) {
   const response = await chatCompletion([
     {
       role: 'system',
-      content: `You are a nutrition expert. Generate a comprehensive weekly nutrition report. Return JSON:
+      content: `You are a nutrition expert. Grade the meal plan STRICTLY against the user's CUSTOM macro targets (not general dietary guidelines).
+
+GRADING RULES (based on how close daily averages are to USER'S targets):
+- Grade A: ALL macros within 10% of user's targets
+- Grade B: ALL macros within 20% of user's targets  
+- Grade C: Some macros within 20%, some off by 20-35%
+- Grade D: Multiple macros off by more than 35%
+
+IMPORTANT: The targets below are the user's PERSONAL goals. Grade ONLY against these numbers, NOT against general nutrition guidelines like "2000 calories" or "50g protein".
+
+Return JSON:
 {
-  "summary": "Brief 2-sentence overview",
+  "summary": "Brief 2-sentence overview referencing the user's specific targets",
   "grade": "A|B|C|D",
   "dailyBreakdown": [
-    {"day": "Monday", "calories": 1800, "calorieTarget": 2000, "verdict": "slightly under", "emoji": "⚡"}
+    {"day": "Monday", "calories": 1800, "calorieTarget": TARGET_CAL, "verdict": "X% under/over target", "emoji": "⚡"}
   ],
-  "weeklyAverages": {"calories": 1900, "protein": 140, "carbs": 190, "fat": 65, "fiber": 22},
+  "weeklyAverages": {"calories": avg, "protein": avg, "carbs": avg, "fat": avg, "fiber": avg},
   "insights": [
-    {"type": "positive|warning|tip", "icon": "✅|⚠️|💡", "message": "Great protein intake averaging 140g/day"}
+    {"type": "positive|warning|tip", "icon": "✅|⚠️|💡", "message": "..."}
   ],
-  "micronutrientGaps": ["Vitamin D", "Iron"],
-  "hydrationReminder": "Aim for 8-10 glasses of water daily",
-  "topRecommendation": "Add more leafy greens for fiber and iron"
+  "micronutrientGaps": ["..."],
+  "hydrationReminder": "...",
+  "topRecommendation": "..."
 }`
     },
     {
       role: 'user',
       content: `Generate a nutrition report for this week.
 
-Target macros: ${JSON.stringify(targetMacros)}
+USER'S PERSONAL MACRO TARGETS (grade against THESE, not general guidelines):
+- Daily Calories: ${targetMacros.calories}
+- Daily Protein: ${targetMacros.protein}g
+- Daily Carbs: ${targetMacros.carbs}g
+- Daily Fat: ${targetMacros.fat}g
 
-Daily nutrition breakdown:
-${JSON.stringify(dailyNutrition, null, 2)}`
+Daily nutrition breakdown (actual intake, per person):
+${JSON.stringify(dailyNutrition, null, 2)}
+
+Grade the plan based on how close the daily averages are to the user's SPECIFIC targets above.`
     }
   ], { jsonMode: true, temperature: 0.3 });
 

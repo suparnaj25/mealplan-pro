@@ -390,25 +390,33 @@ async function aiOptimizeDailyPlan(items, dailyTargets, recipeCache, mealTypes) 
       const response = await aiService.chatCompletion([
         {
           role: 'system',
-          content: `You adjust meal plan portions to hit exact daily macro targets. Return ONLY a JSON array of scale factors, one per meal in order. Each scale factor adjusts that meal's ingredient quantities and nutrition proportionally.
+          content: `You are a precision meal plan optimizer. Your ONLY job is to compute scale factors that make the daily totals EXACTLY match the targets.
 
-Rules:
-- Scale factors must be between 0.5 and 2.0
-- The sum of (meal_calories × scale_factor) for all meals should equal the daily calorie target (within 5%)
-- Similarly for protein, carbs, and fat
-- Prioritize hitting ALL macros, with protein being most important
-- Return ONLY the JSON array, e.g.: [1.1, 0.9, 1.2]`
+CRITICAL RULES:
+- Return ONLY a JSON array of numbers, e.g.: [1.1, 0.9, 1.2]
+- One scale factor per meal, in order
+- Scale factors between 0.5 and 2.0
+- After scaling: sum(meal_cal × factor) MUST be within 3% of calorie target
+- After scaling: sum(meal_protein × factor) MUST be within 10% of protein target
+- After scaling: sum(meal_carbs × factor) MUST be within 10% of carb target
+- After scaling: sum(meal_fat × factor) MUST be within 15% of fat target
+- Protein accuracy is MOST important — get it as close as possible
+- This plan needs to achieve Grade A when evaluated against these specific targets`
         },
         {
           role: 'user',
-          content: `Daily targets: ${dailyTargets.calories} cal, ${dailyTargets.protein}g protein, ${dailyTargets.carbs}g carbs, ${dailyTargets.fat}g fat
+          content: `EXACT daily targets to hit:
+- Calories: ${dailyTargets.calories}
+- Protein: ${dailyTargets.protein}g
+- Carbs: ${dailyTargets.carbs}g
+- Fat: ${dailyTargets.fat}g
 
-${days[dayIdx]} meals:
+${days[dayIdx]} meals (per serving, unscaled):
 ${dayRecipes.map((r, i) => `${i + 1}. ${r.recipeName} (${r.mealType}): ${r.nutrition.calories} cal, ${r.nutrition.protein}g P, ${r.nutrition.carbs}g C, ${r.nutrition.fat}g F`).join('\n')}
 
-Current total: ${currentTotal.calories} cal, ${currentTotal.protein}g P, ${currentTotal.carbs}g C, ${currentTotal.fat}g F
+Unscaled total: ${currentTotal.calories} cal, ${currentTotal.protein}g P, ${currentTotal.carbs}g C, ${currentTotal.fat}g F
 
-Calculate the optimal scale factor for each meal to hit the daily targets. Return JSON array only.`
+Compute scale factors so the scaled totals match the targets as closely as possible. Return JSON array only.`
         }
       ], { temperature: 0.1, maxTokens: 100 });
 
