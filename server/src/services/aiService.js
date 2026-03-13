@@ -82,13 +82,18 @@ async function optimizeMealPlan(userId, planId) {
   `).all(planId);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const planSummary = items.map(i => ({
-    day: days[i.day_of_week],
-    meal: i.meal_type,
-    recipe: i.recipe_name,
-    nutrition: parseJSON(i.nutrition, {}),
-    cuisine: i.cuisine,
-  }));
+  const planSummary = items.map(i => {
+    const sf = i.scale_factor || 1.0;
+    const n = parseJSON(i.nutrition, {});
+    return {
+      day: days[i.day_of_week],
+      meal: i.meal_type,
+      recipe: i.recipe_name,
+      nutrition: { calories: Math.round((n.calories || 0) * sf), protein: Math.round((n.protein || 0) * sf), carbs: Math.round((n.carbs || 0) * sf), fat: Math.round((n.fat || 0) * sf) },
+      cuisine: i.cuisine,
+      scaleFactor: sf,
+    };
+  });
 
   const targetMacros = macros ? {
     calories: macros.calories || 2000,
@@ -337,7 +342,7 @@ async function nutritionInsights(userId, planId) {
 
   const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(userId);
   const items = db.prepare(`
-    SELECT mpi.day_of_week, mpi.meal_type, mpi.servings, r.name as recipe_name, r.nutrition, r.ingredients
+    SELECT mpi.day_of_week, mpi.meal_type, mpi.servings, mpi.scale_factor, r.name as recipe_name, r.nutrition, r.ingredients
     FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id
     WHERE mpi.meal_plan_id = ?
     ORDER BY mpi.day_of_week
@@ -349,13 +354,15 @@ async function nutritionInsights(userId, planId) {
     const day = days[item.day_of_week];
     if (!dailyNutrition[day]) dailyNutrition[day] = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, meals: [] };
     const n = parseJSON(item.nutrition, {});
-    const servings = item.servings || 1;
-    dailyNutrition[day].calories += (n.calories || 0) * servings;
-    dailyNutrition[day].protein += (n.protein || 0) * servings;
-    dailyNutrition[day].carbs += (n.carbs || 0) * servings;
-    dailyNutrition[day].fat += (n.fat || 0) * servings;
-    dailyNutrition[day].fiber += (n.fiber || 0) * servings;
-    dailyNutrition[day].meals.push(`${item.recipe_name} (${servings} srv)`);
+    // scale_factor adjusts per-serving nutrition to match macro targets
+    // This is per-person (each person eats 1 scaled serving)
+    const sf = item.scale_factor || 1.0;
+    dailyNutrition[day].calories += Math.round((n.calories || 0) * sf);
+    dailyNutrition[day].protein += Math.round((n.protein || 0) * sf);
+    dailyNutrition[day].carbs += Math.round((n.carbs || 0) * sf);
+    dailyNutrition[day].fat += Math.round((n.fat || 0) * sf);
+    dailyNutrition[day].fiber += Math.round((n.fiber || 0) * sf);
+    dailyNutrition[day].meals.push(`${item.recipe_name} (${sf}x)`);
   }
 
   const targetMacros = macros ? {
