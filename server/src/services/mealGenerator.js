@@ -221,6 +221,8 @@ async function generateMealPlan(preferences) {
   const usedCuisines = {};
   const restrictions = parseJSON(diets.restrictions, []);
   const dietPrefs = parseJSON(diets.diets, []);
+  console.log(`🔒 Dietary restrictions: ${restrictions.length > 0 ? restrictions.join(', ') : 'NONE'}`);
+  console.log(`🥗 Diet preferences: ${dietPrefs.length > 0 ? dietPrefs.join(', ') : 'NONE'}`);
 
   // Pre-fetch some fresh recipes from the internet for variety
   for (const mt of mealTypes) {
@@ -264,14 +266,17 @@ async function generateMealPlan(preferences) {
       const allRecipes = recipeCache[mealType] || [];
       let candidates = allRecipes.filter(r => !usedRecipeIds.has(r.id));
 
-      // Apply dietary restrictions
+      // Apply dietary restrictions — STRICT enforcement
       if (restrictions.length > 0) {
+        const beforeCount = candidates.length;
         candidates = candidates.filter(recipe => recipePassesRestrictions(recipe, restrictions));
+        console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after restriction filter (${restrictions.join(', ')})`);
       }
 
-      // Fallback: allow reuse if no unused candidates
+      // Fallback: allow reuse if no unused candidates, but STILL enforce restrictions
       if (candidates.length === 0) {
         candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
+        console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions`);
       }
 
       if (candidates.length === 0) continue;
