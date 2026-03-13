@@ -185,9 +185,6 @@ class ApiService {
   aiNutritionReport(planId) {
     return this.request('/ai/nutrition-report', { method: 'POST', body: JSON.stringify({ planId }) });
   }
-  aiGenerateImage(recipeName, description, cuisine, recipeId) {
-    return this.request('/ai/generate-image', { method: 'POST', body: JSON.stringify({ recipeName, description, cuisine, recipeId }) });
-  }
 }
 
 export const api = new ApiService();

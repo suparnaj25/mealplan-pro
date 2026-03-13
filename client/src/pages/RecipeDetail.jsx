@@ -149,8 +149,6 @@ export default function RecipeDetail() {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [substitutions, setSubstitutions] = useState(null);
   const [subsLoading, setSubsLoading] = useState(false);
-  const [imageGenerating, setImageGenerating] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState(null);
   const { speak, stop, supported: voiceSupported } = useSpeech();
 
   useEffect(() => {
@@ -216,19 +214,6 @@ export default function RecipeDetail() {
       console.error('Substitutions error:', err);
     } finally {
       setSubsLoading(false);
-    }
-  };
-
-  const handleGenerateImage = async () => {
-    if (!recipe) return;
-    setImageGenerating(true);
-    try {
-      const data = await api.aiGenerateImage(recipe.name, recipe.description, recipe.cuisine, recipe.id || id);
-      setGeneratedImage(data.imageUrl);
-    } catch (err) {
-      console.error('Image gen error:', err);
-    } finally {
-      setImageGenerating(false);
     }
   };
 
@@ -501,22 +486,15 @@ export default function RecipeDetail() {
         </motion.div>
       )}
 
-      {/* AI-generated image */}
-      {(generatedImage || recipe.image_url) && (
+      {/* Recipe image */}
+      {recipe.image_url && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl overflow-hidden">
-          <img src={generatedImage || recipe.image_url} alt={recipe.name} className="w-full h-64 object-cover rounded-2xl" />
+          <img src={recipe.image_url} alt={recipe.name} className="w-full h-64 object-cover rounded-2xl" />
         </motion.div>
       )}
 
       {/* AI Action buttons */}
       <div className="flex flex-wrap gap-2">
-        {!generatedImage && !recipe.image_url && (
-          <button onClick={handleGenerateImage} disabled={imageGenerating}
-            className="btn-secondary text-xs flex items-center gap-1.5">
-            {imageGenerating ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🎨'}
-            {imageGenerating ? 'Generating...' : 'Generate AI Image'}
-          </button>
-        )}
         <button onClick={loadSubstitutions} disabled={subsLoading}
           className="btn-secondary text-xs flex items-center gap-1.5">
           {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🔄'}
