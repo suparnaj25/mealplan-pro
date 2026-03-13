@@ -162,6 +162,32 @@ class ApiService {
   getRecipe(id) {
     return this.request(`/recipes/${id}`);
   }
+
+  // AI
+  getAiStatus() {
+    return this.request('/ai/status');
+  }
+  aiOptimize(planId) {
+    return this.request('/ai/optimize', { method: 'POST', body: JSON.stringify({ planId }) });
+  }
+  aiChat(message, history = []) {
+    return this.request('/ai/chat', { method: 'POST', body: JSON.stringify({ message, history }) });
+  }
+  aiSubstitutions(recipeId) {
+    return this.request('/ai/substitutions', { method: 'POST', body: JSON.stringify({ recipeId }) });
+  }
+  aiWhatCanIMake() {
+    return this.request('/ai/what-can-i-make');
+  }
+  aiBudget(planId) {
+    return this.request('/ai/budget', { method: 'POST', body: JSON.stringify({ planId }) });
+  }
+  aiNutritionReport(planId) {
+    return this.request('/ai/nutrition-report', { method: 'POST', body: JSON.stringify({ planId }) });
+  }
+  aiGenerateImage(recipeName, description, cuisine, recipeId) {
+    return this.request('/ai/generate-image', { method: 'POST', body: JSON.stringify({ recipeName, description, cuisine, recipeId }) });
+  }
 }
 
 export const api = new ApiService();
