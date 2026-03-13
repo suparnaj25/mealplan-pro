@@ -323,14 +323,23 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Update daily running totals
+        // Calculate optimal servings to match calorie target
         const n = pick.nutrition;
-        dayTotals.calories += n.calories || 0;
-        dayTotals.protein += n.protein || 0;
-        dayTotals.carbs += n.carbs || 0;
-        dayTotals.fat += n.fat || 0;
+        let servings = 1;
+        if (n.calories && mealTarget.calories && n.calories > 0) {
+          // How many servings needed to hit calorie target?
+          const idealServings = mealTarget.calories / n.calories;
+          // Round to nearest 0.5, clamp between 1 and 3
+          servings = Math.max(1, Math.min(3, Math.round(idealServings * 2) / 2));
+        }
 
-        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings: 1 });
+        // Update daily running totals (scaled by servings)
+        dayTotals.calories += (n.calories || 0) * servings;
+        dayTotals.protein += (n.protein || 0) * servings;
+        dayTotals.carbs += (n.carbs || 0) * servings;
+        dayTotals.fat += (n.fat || 0) * servings;
+
+        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings });
       }
     }
 
