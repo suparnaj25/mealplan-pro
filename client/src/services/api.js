@@ -142,6 +142,9 @@ class ApiService {
     const qs = new URLSearchParams(params).toString();
     return this.request(`/recipes/search?${qs}`);
   }
+  getRecipe(id) {
+    return this.request(`/recipes/${id}`);
+  }
 }
 
 export const api = new ApiService();

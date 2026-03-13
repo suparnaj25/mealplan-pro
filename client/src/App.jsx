@@ -8,6 +8,7 @@ import MealPlan from './pages/MealPlan';
 import GroceryList from './pages/GroceryList';
 import Pantry from './pages/Pantry';
 import Settings from './pages/Settings';
+import RecipeDetail from './pages/RecipeDetail';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore();
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="groceries" element={<GroceryList />} />
         <Route path="pantry" element={<Pantry />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="recipe/:id" element={<RecipeDetail />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
