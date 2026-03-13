@@ -66,41 +66,32 @@ const MEAL_MACRO_PROPORTIONS = {
  * Uses normalized percentage deviation across all macros.
  */
 function scoreRecipeNutrition(recipeNutrition, targetMacros) {
-  if (!targetMacros || !targetMacros.calories) return 0; // No targets = all equal
+  if (!targetMacros || !targetMacros.calories) return 0;
 
   const n = recipeNutrition || {};
+  if (!n.calories || n.calories === 0) return 10; // Penalize recipes with no nutrition data
+
+  // Score based on MACRO RATIOS, not absolute values
+  // This way, when we scale by calories, all macros scale proportionally
+  // Calculate protein/carb/fat as percentage of calories
+  const targetProtPct = targetMacros.protein ? (targetMacros.protein * 4) / targetMacros.calories : 0;
+  const targetCarbPct = targetMacros.carbs ? (targetMacros.carbs * 4) / targetMacros.calories : 0;
+  const targetFatPct = targetMacros.fat ? (targetMacros.fat * 9) / targetMacros.calories : 0;
+
+  const recipeProtPct = n.protein ? (n.protein * 4) / n.calories : 0;
+  const recipeCarbPct = n.carbs ? (n.carbs * 4) / n.calories : 0;
+  const recipeFatPct = n.fat ? (n.fat * 9) / n.calories : 0;
+
   let totalDeviation = 0;
-  let factors = 0;
 
-  // Calorie fit (most important — weight 2x)
-  if (targetMacros.calories > 0 && n.calories) {
-    const calDev = Math.abs(n.calories - targetMacros.calories) / targetMacros.calories;
-    totalDeviation += calDev * 2;
-    factors += 2;
-  }
+  // Protein ratio deviation (weighted 3x — most important)
+  if (targetProtPct > 0) totalDeviation += Math.abs(recipeProtPct - targetProtPct) / targetProtPct * 3;
+  // Carb ratio deviation
+  if (targetCarbPct > 0) totalDeviation += Math.abs(recipeCarbPct - targetCarbPct) / targetCarbPct;
+  // Fat ratio deviation
+  if (targetFatPct > 0) totalDeviation += Math.abs(recipeFatPct - targetFatPct) / targetFatPct;
 
-  // Protein fit (critical for fitness goals — weight 3x)
-  if (targetMacros.protein > 0 && n.protein) {
-    const protDev = Math.abs(n.protein - targetMacros.protein) / targetMacros.protein;
-    totalDeviation += protDev * 3;
-    factors += 3;
-  }
-
-  // Carbs fit
-  if (targetMacros.carbs > 0 && n.carbs) {
-    const carbDev = Math.abs(n.carbs - targetMacros.carbs) / targetMacros.carbs;
-    totalDeviation += carbDev;
-    factors += 1;
-  }
-
-  // Fat fit
-  if (targetMacros.fat > 0 && n.fat) {
-    const fatDev = Math.abs(n.fat - targetMacros.fat) / targetMacros.fat;
-    totalDeviation += fatDev;
-    factors += 1;
-  }
-
-  return factors > 0 ? totalDeviation / factors : 0;
+  return totalDeviation / 5; // Normalize
 }
 
 /**
@@ -323,12 +314,18 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Scale factor = 1.0 — recipes are served as-is (1 serving per person)
-        // The scoring algorithm (protein weighted 3x) handles macro optimization
-        // Scaling individual macros independently is impossible with a single factor
+        // Scale by CALORIES to match the calorie target for this meal slot
+        // Because we selected recipes with matching macro RATIOS,
+        // all macros (protein, carbs, fat) will scale proportionally
         const n = pick.nutrition;
         const servings = householdSize;
-        const scaleFactor = 1.0;
+        let scaleFactor = 1.0;
+        if (n.calories && n.calories > 0 && mealTarget.calories) {
+          scaleFactor = mealTarget.calories / n.calories;
+          // Clamp between 0.7x and 1.5x
+          scaleFactor = Math.max(0.7, Math.min(1.5, scaleFactor));
+          scaleFactor = Math.round(scaleFactor * 10) / 10;
+        }
 
         // Update daily running totals (per-person, scaled)
         dayTotals.calories += (n.calories || 0) * scaleFactor;
