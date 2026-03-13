@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS meal_plan_items (
   meal_type TEXT NOT NULL,
   recipe_id TEXT REFERENCES recipes(id),
   locked INTEGER DEFAULT 0,
-  servings INTEGER DEFAULT 1
+  servings INTEGER DEFAULT 1,
+  scale_factor REAL DEFAULT 1.0
 );
 
 CREATE TABLE IF NOT EXISTS pantry_items (
@@ -193,6 +194,8 @@ CREATE TABLE IF NOT EXISTS user_recipes (
 console.log('🔄 Running database migrations...');
 try {
   db.exec(migration);
+  // Add scale_factor to existing meal_plan_items tables (safe if column already exists)
+  try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN scale_factor REAL DEFAULT 1.0'); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

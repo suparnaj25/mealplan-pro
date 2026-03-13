@@ -323,18 +323,26 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Servings = household size (each person eats 1 serving)
-        // The recipe's per-serving nutrition is what each person consumes
+        // Calculate scale factor: how much to scale the recipe's per-serving amounts
+        // to match the per-person macro target for this meal slot
         const n = pick.nutrition;
         const servings = householdSize;
+        let scaleFactor = 1.0;
+        if (n.calories && mealTarget.calories && n.calories > 0) {
+          scaleFactor = mealTarget.calories / n.calories;
+          // Clamp between 0.5x and 2.5x to keep recipes reasonable
+          scaleFactor = Math.max(0.5, Math.min(2.5, scaleFactor));
+          // Round to 1 decimal place
+          scaleFactor = Math.round(scaleFactor * 10) / 10;
+        }
 
-        // Update daily running totals (per-person: each person eats 1 serving)
-        dayTotals.calories += n.calories || 0;
-        dayTotals.protein += n.protein || 0;
-        dayTotals.carbs += n.carbs || 0;
-        dayTotals.fat += n.fat || 0;
+        // Update daily running totals (per-person, scaled)
+        dayTotals.calories += (n.calories || 0) * scaleFactor;
+        dayTotals.protein += (n.protein || 0) * scaleFactor;
+        dayTotals.carbs += (n.carbs || 0) * scaleFactor;
+        dayTotals.fat += (n.fat || 0) * scaleFactor;
 
-        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings });
+        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings, scaleFactor });
       }
     }
 
