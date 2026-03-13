@@ -1,5 +1,7 @@
 const db = require('../db/connection');
 const { v4: uuidv4 } = require('uuid');
+let aiService;
+try { aiService = require('./aiService'); } catch(e) { aiService = null; }
 
 // ── Restriction rules ──
 const RESTRICTION_EXCLUDE_RULES = {
@@ -314,24 +316,15 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Scale by CALORIES to match the calorie target for this meal slot
-        // Because we selected recipes with matching macro RATIOS,
-        // all macros (protein, carbs, fat) will scale proportionally
         const n = pick.nutrition;
         const servings = householdSize;
-        let scaleFactor = 1.0;
-        if (n.calories && n.calories > 0 && mealTarget.calories) {
-          scaleFactor = mealTarget.calories / n.calories;
-          // Clamp between 0.7x and 1.5x
-          scaleFactor = Math.max(0.7, Math.min(1.5, scaleFactor));
-          scaleFactor = Math.round(scaleFactor * 10) / 10;
-        }
+        const scaleFactor = 1.0;
 
-        // Update daily running totals (per-person, scaled)
-        dayTotals.calories += (n.calories || 0) * scaleFactor;
-        dayTotals.protein += (n.protein || 0) * scaleFactor;
-        dayTotals.carbs += (n.carbs || 0) * scaleFactor;
-        dayTotals.fat += (n.fat || 0) * scaleFactor;
+        // Update daily running totals
+        dayTotals.calories += n.calories || 0;
+        dayTotals.protein += n.protein || 0;
+        dayTotals.carbs += n.carbs || 0;
+        dayTotals.fat += n.fat || 0;
 
         items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings, scaleFactor });
       }
@@ -341,8 +334,109 @@ async function generateMealPlan(preferences) {
     console.log(`  ${days[day]}: ${dayTotals.calories} cal/person, ${dayTotals.protein}g P, ${dayTotals.carbs}g C, ${dayTotals.fat}g F (${householdSize} servings each meal)`);
   }
 
-  console.log(`✅ Generated ${items.length} optimized meals`);
+  console.log(`✅ Generated ${items.length} meals, now AI-optimizing...`);
+
+  // AI Post-Optimization: Ask AI to adjust ingredient quantities per day to hit exact targets
+  if (aiService && aiService.isConfigured()) {
+    try {
+      const optimizedItems = await aiOptimizeDailyPlan(items, dailyTargets, recipeCache, mealTypes);
+      console.log(`🤖 AI optimization complete`);
+      return optimizedItems;
+    } catch (err) {
+      console.error('AI optimization failed, using base plan:', err.message);
+    }
+  }
+
   return items;
+}
+
+/**
+ * Use AI to adjust ingredient quantities and nutrition for each day
+ * to precisely hit the user's macro targets
+ */
+async function aiOptimizeDailyPlan(items, dailyTargets, recipeCache, mealTypes) {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  // Group items by day
+  const dayGroups = {};
+  for (const item of items) {
+    if (!dayGroups[item.dayOfWeek]) dayGroups[item.dayOfWeek] = [];
+    dayGroups[item.dayOfWeek].push(item);
+  }
+
+  const optimizedItems = [];
+
+  for (const [dayIdx, dayItems] of Object.entries(dayGroups)) {
+    // Get full recipe details for this day
+    const dayRecipes = dayItems.map(item => {
+      const allMealRecipes = recipeCache[item.mealType] || [];
+      const recipe = allMealRecipes.find(r => r.id === item.recipeId);
+      const nutrition = recipe ? parseJSON(recipe.nutrition, {}) : {};
+      return {
+        ...item,
+        recipeName: recipe ? (db.prepare('SELECT name FROM recipes WHERE id = ?').get(item.recipeId)?.name || 'Unknown') : 'Unknown',
+        nutrition,
+      };
+    });
+
+    const currentTotal = {
+      calories: dayRecipes.reduce((s, r) => s + (r.nutrition.calories || 0), 0),
+      protein: dayRecipes.reduce((s, r) => s + (r.nutrition.protein || 0), 0),
+      carbs: dayRecipes.reduce((s, r) => s + (r.nutrition.carbs || 0), 0),
+      fat: dayRecipes.reduce((s, r) => s + (r.nutrition.fat || 0), 0),
+    };
+
+    try {
+      const response = await aiService.chatCompletion([
+        {
+          role: 'system',
+          content: `You adjust meal plan portions to hit exact daily macro targets. Return ONLY a JSON array of scale factors, one per meal in order. Each scale factor adjusts that meal's ingredient quantities and nutrition proportionally.
+
+Rules:
+- Scale factors must be between 0.5 and 2.0
+- The sum of (meal_calories × scale_factor) for all meals should equal the daily calorie target (within 5%)
+- Similarly for protein, carbs, and fat
+- Prioritize hitting ALL macros, with protein being most important
+- Return ONLY the JSON array, e.g.: [1.1, 0.9, 1.2]`
+        },
+        {
+          role: 'user',
+          content: `Daily targets: ${dailyTargets.calories} cal, ${dailyTargets.protein}g protein, ${dailyTargets.carbs}g carbs, ${dailyTargets.fat}g fat
+
+${days[dayIdx]} meals:
+${dayRecipes.map((r, i) => `${i + 1}. ${r.recipeName} (${r.mealType}): ${r.nutrition.calories} cal, ${r.nutrition.protein}g P, ${r.nutrition.carbs}g C, ${r.nutrition.fat}g F`).join('\n')}
+
+Current total: ${currentTotal.calories} cal, ${currentTotal.protein}g P, ${currentTotal.carbs}g C, ${currentTotal.fat}g F
+
+Calculate the optimal scale factor for each meal to hit the daily targets. Return JSON array only.`
+        }
+      ], { temperature: 0.1, maxTokens: 100 });
+
+      // Parse AI response
+      const scaleFactors = JSON.parse(response.trim());
+
+      if (Array.isArray(scaleFactors) && scaleFactors.length === dayItems.length) {
+        for (let i = 0; i < dayItems.length; i++) {
+          const sf = Math.max(0.5, Math.min(2.0, scaleFactors[i] || 1.0));
+          optimizedItems.push({
+            ...dayItems[i],
+            scaleFactor: Math.round(sf * 10) / 10,
+          });
+        }
+        const scaledCal = dayRecipes.reduce((s, r, i) => s + (r.nutrition.calories || 0) * scaleFactors[i], 0);
+        const scaledProt = dayRecipes.reduce((s, r, i) => s + (r.nutrition.protein || 0) * scaleFactors[i], 0);
+        console.log(`  ${days[dayIdx]}: AI optimized → ${Math.round(scaledCal)} cal, ${Math.round(scaledProt)}g P`);
+        continue;
+      }
+    } catch (err) {
+      console.error(`  ${days[dayIdx]}: AI failed (${err.message}), using defaults`);
+    }
+
+    // Fallback: use items as-is
+    optimizedItems.push(...dayItems);
+  }
+
+  return optimizedItems;
 }
 
 module.exports = { generateMealPlan, recipePassesRestrictions };
