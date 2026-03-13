@@ -132,7 +132,7 @@ export const useUserRecipesStore = create((set) => ({
 }));
 
 export const useThemeStore = create((set) => ({
-  dark: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches),
+  dark: localStorage.getItem('theme') === 'light' ? false : true,
   toggle: () =>
     set((state) => {
       const next = !state.dark;

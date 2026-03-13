@@ -93,23 +93,4 @@ router.post('/nutrition-report', async (req, res) => {
   }
 });
 
-// POST /api/ai/generate-image — Feature 8: Recipe Image Generation
-router.post('/generate-image', async (req, res) => {
-  try {
-    const { recipeName, description, cuisine, recipeId } = req.body;
-    if (!recipeName) return res.status(400).json({ error: 'recipeName required' });
-    const result = await ai.generateRecipeImage(recipeName, description, cuisine);
-
-    // Optionally save image_url to recipe
-    if (recipeId && result.imageUrl) {
-      try { db.prepare('UPDATE recipes SET image_url = ? WHERE id = ?').run(result.imageUrl, recipeId); } catch {}
-    }
-
-    res.json(result);
-  } catch (error) {
-    console.error('AI image error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 module.exports = router;
