@@ -202,13 +202,14 @@ export default function MealPlan() {
                   {groupedByDay[dayIdx].map((item) => (
                     <div
                       key={item.id}
-                      className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 card-hover"
+                      className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 card-hover cursor-pointer group"
+                      onClick={() => navigate(`/recipe/${item.recipe_id}`, { state: { recipe: { ...item, name: item.recipe_name, id: item.recipe_id } } })}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold uppercase text-gray-400 flex items-center gap-1">
                           {MEAL_ICONS[item.meal_type]} {item.meal_type}
                         </span>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock' : 'Lock'}>
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
                           </button>
@@ -220,7 +221,7 @@ export default function MealPlan() {
                           </button>
                         </div>
                       </div>
-                      <p className="font-medium text-sm leading-tight">{item.recipe_name}</p>
+                      <p className="font-medium text-sm leading-tight group-hover:text-brand-500 transition-colors">{item.recipe_name}</p>
                       {item.nutrition && (
                         <div className="flex gap-3 mt-2 text-xs text-gray-400">
                           <span>{item.nutrition.calories} cal</span>
@@ -234,6 +235,9 @@ export default function MealPlan() {
                           <Clock size={12} /> {item.prep_time_minutes + (item.cook_time_minutes || 0)} min
                         </div>
                       )}
+                      <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        View Recipe →
+                      </div>
                     </div>
                   ))}
                 </div>
