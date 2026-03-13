@@ -11,13 +11,14 @@ const groceriesRoutes = require('./routes/groceries');
 const recipesRoutes = require('./routes/recipes');
 const krogerRoutes = require('./routes/kroger');
 const userRecipesRoutes = require('./routes/userRecipes');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || true, // Allow all origins in production (same-origin serving)
+  origin: process.env.CLIENT_URL || true,
   credentials: true,
 }));
 app.use(express.json());
@@ -36,6 +37,7 @@ app.use('/api/groceries', groceriesRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/kroger', krogerRoutes);
 app.use('/api/user-recipes', userRecipesRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Serve static React build in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

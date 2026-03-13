@@ -17,6 +17,24 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 
+// Feature 9: Voice synthesis for cooking mode
+function useSpeech() {
+  const speak = (text) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+  const stop = () => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  };
+  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  return { speak, stop, supported };
+}
+
 const MEAL_EMOJI = {
   breakfast: '🌅',
   lunch: '☀️',
@@ -128,6 +146,12 @@ export default function RecipeDetail() {
   const [completedSteps, setCompletedSteps] = useState(new Set());
   const [checkedIngredients, setCheckedIngredients] = useState(new Set());
   const [cookingMode, setCookingMode] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [substitutions, setSubstitutions] = useState(null);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [imageGenerating, setImageGenerating] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const { speak, stop, supported: voiceSupported } = useSpeech();
 
   useEffect(() => {
     if (!recipe && id) {
@@ -168,12 +192,44 @@ export default function RecipeDetail() {
   const nextStep = () => {
     if (recipe && currentStep < recipe.instructions.length - 1) {
       toggleStepComplete(currentStep);
-      setCurrentStep((s) => s + 1);
+      const next = currentStep + 1;
+      setCurrentStep(next);
+      if (voiceEnabled && recipe.instructions[next]) speak(recipe.instructions[next]);
     }
   };
 
   const prevStep = () => {
-    if (currentStep > 0) setCurrentStep((s) => s - 1);
+    if (currentStep > 0) {
+      const prev = currentStep - 1;
+      setCurrentStep(prev);
+      if (voiceEnabled && recipe.instructions[prev]) speak(recipe.instructions[prev]);
+    }
+  };
+
+  const loadSubstitutions = async () => {
+    if (!recipe?.id && !id) return;
+    setSubsLoading(true);
+    try {
+      const data = await api.aiSubstitutions(recipe?.id || id);
+      setSubstitutions(data);
+    } catch (err) {
+      console.error('Substitutions error:', err);
+    } finally {
+      setSubsLoading(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!recipe) return;
+    setImageGenerating(true);
+    try {
+      const data = await api.aiGenerateImage(recipe.name, recipe.description, recipe.cuisine, recipe.id || id);
+      setGeneratedImage(data.imageUrl);
+    } catch (err) {
+      console.error('Image gen error:', err);
+    } finally {
+      setImageGenerating(false);
+    }
   };
 
   if (loading) {
@@ -215,12 +271,21 @@ export default function RecipeDetail() {
       <div className="fixed inset-0 z-50 bg-gray-900 text-white flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-          <button onClick={() => setCookingMode(false)} className="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+          <button onClick={() => { setCookingMode(false); stop(); }} className="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
             <ArrowLeft size={20} /> Exit Cooking Mode
           </button>
-          <span className="text-sm text-gray-400">
-            Step {currentStep + 1} of {instructions.length}
-          </span>
+          <div className="flex items-center gap-3">
+            {voiceSupported && (
+              <button onClick={() => { setVoiceEnabled(!voiceEnabled); if (voiceEnabled) stop(); else speak(instructions[currentStep]); }}
+                className={`p-2 rounded-lg transition-colors ${voiceEnabled ? 'bg-brand-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                title={voiceEnabled ? 'Disable voice' : 'Enable voice'}>
+                🔊
+              </button>
+            )}
+            <span className="text-sm text-gray-400">
+              Step {currentStep + 1} of {instructions.length}
+            </span>
+          </div>
         </div>
 
         {/* Progress bar */}
@@ -432,6 +497,59 @@ export default function RecipeDetail() {
                 <div className="text-xs text-gray-500">Fiber</div>
               </div>
             )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* AI-generated image */}
+      {(generatedImage || recipe.image_url) && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl overflow-hidden">
+          <img src={generatedImage || recipe.image_url} alt={recipe.name} className="w-full h-64 object-cover rounded-2xl" />
+        </motion.div>
+      )}
+
+      {/* AI Action buttons */}
+      <div className="flex flex-wrap gap-2">
+        {!generatedImage && !recipe.image_url && (
+          <button onClick={handleGenerateImage} disabled={imageGenerating}
+            className="btn-secondary text-xs flex items-center gap-1.5">
+            {imageGenerating ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🎨'}
+            {imageGenerating ? 'Generating...' : 'Generate AI Image'}
+          </button>
+        )}
+        <button onClick={loadSubstitutions} disabled={subsLoading}
+          className="btn-secondary text-xs flex items-center gap-1.5">
+          {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🔄'}
+          {subsLoading ? 'Finding...' : 'AI Substitutions'}
+        </button>
+      </div>
+
+      {/* Substitution Results */}
+      {substitutions?.substitutions?.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">🔄 Smart Substitutions</h3>
+          <div className="space-y-2">
+            {substitutions.substitutions.map((sub, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-sm">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="line-through text-gray-400">{sub.original}</span>
+                    <span>→</span>
+                    <span className="font-medium text-brand-500">{sub.substitute}</span>
+                    {sub.inPantry && <span className="text-xs bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">In pantry</span>}
+                  </div>
+                  <p className="text-xs text-gray-500">{sub.reason}</p>
+                  {sub.dietaryBenefit && <p className="text-xs text-brand-400 mt-0.5">{sub.dietaryBenefit}</p>}
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  sub.impactOnTaste === 'minimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' :
+                  sub.impactOnTaste === 'moderate' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' :
+                  'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
+                }`}>
+                  {sub.impactOnTaste} impact
+                </span>
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
