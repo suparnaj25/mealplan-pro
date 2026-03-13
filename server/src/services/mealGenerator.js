@@ -79,11 +79,11 @@ function scoreRecipeNutrition(recipeNutrition, targetMacros) {
     factors += 2;
   }
 
-  // Protein fit (important for fitness goals — weight 1.5x)
+  // Protein fit (critical for fitness goals — weight 3x)
   if (targetMacros.protein > 0 && n.protein) {
     const protDev = Math.abs(n.protein - targetMacros.protein) / targetMacros.protein;
-    totalDeviation += protDev * 1.5;
-    factors += 1.5;
+    totalDeviation += protDev * 3;
+    factors += 3;
   }
 
   // Carbs fit
@@ -323,13 +323,16 @@ async function generateMealPlan(preferences) {
         const cuisine = pick.recipe.cuisine || 'Unknown';
         usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
 
-        // Calculate scale factor: how much to scale the recipe's per-serving amounts
-        // to match the per-person macro target for this meal slot
+        // Calculate scale factor using a weighted blend of calorie and protein targets
+        // Protein is weighted higher because it's harder to hit without explicit scaling
         const n = pick.nutrition;
         const servings = householdSize;
         let scaleFactor = 1.0;
-        if (n.calories && mealTarget.calories && n.calories > 0) {
-          scaleFactor = mealTarget.calories / n.calories;
+        if (n.calories && n.calories > 0) {
+          const calScale = mealTarget.calories ? mealTarget.calories / n.calories : 1.0;
+          const protScale = (mealTarget.protein && n.protein && n.protein > 0) ? mealTarget.protein / n.protein : calScale;
+          // Blend: 40% calorie-based, 60% protein-based (prioritize protein fit)
+          scaleFactor = calScale * 0.4 + protScale * 0.6;
           // Clamp between 0.5x and 2.5x to keep recipes reasonable
           scaleFactor = Math.max(0.5, Math.min(2.5, scaleFactor));
           // Round to 1 decimal place
