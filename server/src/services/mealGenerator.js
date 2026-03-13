@@ -6,16 +6,16 @@ try { aiService = require('./aiService'); } catch(e) { aiService = null; }
 // ── Restriction rules ──
 const RESTRICTION_EXCLUDE_RULES = {
   'Vegan': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','prawn','prawns','goat','duck','venison','bison','rabbit','veal','scallop','scallops','squid','octopus','clam','clams','mussel','mussels','oyster','oysters','meat','liver','bone','broth','lard','gelatin','suet','dripping','worcestershire'],
     standaloneExcludes: ['egg','eggs','egg whites','milk','butter','cream','heavy cream','sour cream','cheese','parmesan','parmesan cheese','mozzarella','cheddar','cheddar cheese','feta','feta cheese','goat cheese','cream cheese','cottage cheese','yogurt','greek yogurt','honey'],
     safeCompounds: ['almond milk','coconut milk','oat milk','soy milk','rice milk','cashew milk','peanut butter','almond butter','cashew butter','sunflower butter','coconut butter','coconut cream','cream of tartar','nutritional yeast'],
   },
   'Vegetarian': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','prawn','prawns','goat','duck','venison','bison','rabbit','veal','scallop','scallops','squid','octopus','clam','clams','mussel','mussels','oyster','oysters','meat','liver','bone broth','lard','suet'],
     standaloneExcludes: [], safeCompounds: [],
   },
   'Pescatarian': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','steak','ribeye','bacon','ham','sausage','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','steak','ribeye','bacon','ham','sausage','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','goat','duck','venison','bison','rabbit','veal','liver','lard','suet'],
     standaloneExcludes: [], safeCompounds: [],
   },
   'Gluten-Free': {
