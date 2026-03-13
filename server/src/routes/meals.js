@@ -35,7 +35,10 @@ router.post('/generate', async (req, res) => {
     const cuisinePrefs = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(req.user.id) || {};
     const mealStructure = db.prepare('SELECT * FROM user_meal_structure WHERE user_id = ?').get(req.user.id) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0 };
 
-    const preferences = { diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure };
+    const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(req.user.id);
+    const householdSize = profile?.household_size || 1;
+
+    const preferences = { diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
     const generatedItems = await generateMealPlan(preferences);
 
     // Delete existing
