@@ -12,6 +12,7 @@ const STORES = [
   { id: 'costco', name: 'Costco', icon: '📦', url: (q) => `https://www.costco.com/CatalogSearch?dept=All&keyword=${encodeURIComponent(q)}` },
   { id: 'safeway', name: 'Safeway', icon: '🛍️', url: (q) => `https://www.safeway.com/shop/search-results.html?q=${encodeURIComponent(q)}` },
   { id: 'trader_joes', name: "Trader Joe's", icon: '🌺', url: (q) => `https://www.traderjoes.com/home/search?q=${encodeURIComponent(q)}&section=products` },
+  { id: 'heb', name: 'H-E-B', icon: '🔴', url: (q) => `https://www.heb.com/search/?q=${encodeURIComponent(q)}` },
 ];
 
 function getStoreLink(storeId, itemName, organicPref) {
