@@ -50,6 +50,8 @@ router.post('/generate', async (req, res) => {
     const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(req.user.id);
     const householdSize = profile?.household_size || 1;
 
+    // Ensure restrictions are properly parsed before passing to generator
+    console.log(`🔍 Raw diet prefs from DB:`, JSON.stringify(dietPrefs));
     const preferences = { diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
     const generatedItems = await generateMealPlan(preferences);
 
