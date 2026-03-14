@@ -45,16 +45,30 @@ const MEAL_TYPE_IMAGES = {
   'snack': 'https://images.unsplash.com/photo-1499028344343-cd173ffc68a9?w=400&h=300&fit=crop',
 };
 
-// Dynamic image: Uses Unsplash source redirect for ANY recipe name (no API key needed)
-// This generates a unique, relevant food photo for every recipe dynamically
-function getDynamicFoodImage(recipeName, width = 400, height = 300) {
-  // Clean the recipe name for a good search query
-  const cleaned = recipeName
-    .replace(/\(.*?\)/g, '') // Remove parentheses content
-    .replace(/[^a-zA-Z\s]/g, '') // Remove non-alpha chars
-    .trim()
-    .split(' ').slice(0, 3).join(' '); // Use first 3 words
-  return `https://source.unsplash.com/${width}x${height}/?${encodeURIComponent(cleaned + ' food')}`;
+// Curated high-quality food photo IDs from Unsplash — used as a pool for deterministic assignment
+const FOOD_PHOTO_POOL = [
+  'photo-1546069901-ba9599a7e63c', 'photo-1504674900247-0877df9cc836', 'photo-1498837167922-ddd27525d352',
+  'photo-1490645935967-10de6ba17061', 'photo-1512621776951-a57141f2eefd', 'photo-1473093295043-cdd812d0e601',
+  'photo-1555939594-58d7cb561ad1', 'photo-1540189549336-e6e99c3679fe', 'photo-1565299585323-38d6b0865b47',
+  'photo-1547592180-85f173990554', 'photo-1476224203421-9ac39bcb3327', 'photo-1499028344343-cd173ffc68a9',
+  'photo-1606787366850-de6330128bfc', 'photo-1467003909585-2f8a72700288', 'photo-1565557623262-b51c2513a641',
+  'photo-1603133872878-684f208fb84b', 'photo-1484723091739-30a097e8f929', 'photo-1529042410759-befb1204b468',
+  'photo-1574484284002-952d92456975', 'photo-1482049016688-2d3e1b311543', 'photo-1551183053-bf91a1d81141',
+  'photo-1493770348161-369560ae357d', 'photo-1505253716362-afaea1d3d1af', 'photo-1505576399279-0d309fce0140',
+  'photo-1551024506-0bccd828d307', 'photo-1488477181946-6428a0291777', 'photo-1515516969-d4008c6b4215',
+  'photo-1590412200988-a436970781fa', 'photo-1559314809-0d155014e29e', 'photo-1569718212165-3a8278d5f624',
+];
+
+// Deterministic hash of recipe name → consistent photo assignment
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
+  return Math.abs(hash);
+}
+
+function getDynamicFoodImage(recipeName) {
+  const idx = hashString(recipeName) % FOOD_PHOTO_POOL.length;
+  return `https://images.unsplash.com/${FOOD_PHOTO_POOL[idx]}?w=400&h=300&fit=crop&auto=format`;
 }
 
 export function getRecipeImage(recipeName, mealType) {

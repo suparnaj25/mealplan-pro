@@ -109,6 +109,13 @@ function scoreVariety(recipe, usedCuisines, usedRecipeIds) {
 }
 
 // ── Dynamic recipe fetching from TheMealDB ──
+const MEALDB_SEARCH_TERMS_VEGAN = {
+  breakfast: ['porridge', 'fruit', 'smoothie', 'toast', 'pancake'],
+  lunch: ['salad', 'soup', 'rice', 'pasta', 'lentil'],
+  dinner: ['curry', 'stew', 'rice', 'pasta', 'soup', 'noodle'],
+  snack: ['fruit', 'nuts', 'hummus'],
+};
+
 const MEALDB_SEARCH_TERMS = {
   breakfast: ['omelette', 'pancake', 'porridge', 'smoothie', 'toast', 'muffin', 'fruit'],
   lunch: ['salad', 'soup', 'sandwich', 'wrap', 'bowl', 'rice', 'pasta'],
@@ -117,7 +124,10 @@ const MEALDB_SEARCH_TERMS = {
 };
 
 async function fetchAndCacheFromInternet(mealType, restrictions) {
-  const searchTerms = MEALDB_SEARCH_TERMS[mealType] || MEALDB_SEARCH_TERMS.dinner;
+  // Use vegan-friendly search terms if restrictions include Vegan or Vegetarian
+  const isVeganOrVeg = restrictions.some(r => ['Vegan', 'Vegetarian'].includes(r));
+  const termSet = isVeganOrVeg ? MEALDB_SEARCH_TERMS_VEGAN : MEALDB_SEARCH_TERMS;
+  const searchTerms = termSet[mealType] || termSet.dinner;
   const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
 
   try {
