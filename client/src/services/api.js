@@ -154,6 +154,14 @@ class ApiService {
     return this.request(`/user-recipes/${id}`, { method: 'DELETE' });
   }
 
+  // Food Search
+  searchFood(q) {
+    return this.request(`/food/search?q=${encodeURIComponent(q)}`);
+  }
+  analyzePhoto(imageBase64) {
+    return this.request('/food/analyze-photo', { method: 'POST', body: JSON.stringify({ imageBase64 }) });
+  }
+
   // Tracker
   getDaily(date) {
     return this.request(`/tracker/daily?date=${date}`);

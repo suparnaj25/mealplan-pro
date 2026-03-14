@@ -55,6 +55,11 @@ export default function DailyTracker() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '' });
   const [editingLog, setEditingLog] = useState(null);
+  const [foodSearchQuery, setFoodSearchQuery] = useState('');
+  const [foodSearchResults, setFoodSearchResults] = useState([]);
+  const [searchingFood, setSearchingFood] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
 
   useEffect(() => { loadDay(); }, [date]);
 
@@ -76,12 +81,57 @@ export default function DailyTracker() {
     } catch (err) { console.error(err); }
   };
 
+  const handleFoodSearch = (query) => {
+    setFoodSearchQuery(query);
+    if (searchTimeout) clearTimeout(searchTimeout);
+    if (query.length < 2) { setFoodSearchResults([]); return; }
+    const timeout = setTimeout(async () => {
+      setSearchingFood(true);
+      try {
+        const data = await api.searchFood(query);
+        setFoodSearchResults(data.foods || []);
+      } catch { setFoodSearchResults([]); }
+      finally { setSearchingFood(false); }
+    }, 400);
+    setSearchTimeout(timeout);
+  };
+
+  const selectFood = (food, target = 'quickAdd') => {
+    const update = { description: `${food.name}${food.brand ? ` (${food.brand})` : ''}`, calories: String(food.calories), proteinG: String(food.protein), carbsG: String(food.carbs), fatG: String(food.fat) };
+    if (target === 'quickAdd') setQuickAddForm({ ...quickAddForm, ...update });
+    else if (target === 'edit') setEditingLog({ ...editingLog, ...update });
+    setFoodSearchResults([]);
+    setFoodSearchQuery('');
+  };
+
+  const handlePhotoCapture = async (e, target = 'quickAdd') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAnalyzingPhoto(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const data = await api.analyzePhoto(reader.result);
+          if (data.food) {
+            const update = { description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat) };
+            if (target === 'quickAdd') setQuickAddForm({ ...quickAddForm, ...update });
+            else if (target === 'edit') setEditingLog({ ...editingLog, ...update });
+          } else { alert('Could not identify food in photo. Try again or enter manually.'); }
+        } catch (err) { alert(err.message); }
+        finally { setAnalyzingPhoto(false); }
+      };
+      reader.readAsDataURL(file);
+    } catch { setAnalyzingPhoto(false); }
+  };
+
   const handleQuickAdd = async (e) => {
     e.preventDefault();
     try {
       await api.quickAddFood({ date, mealType: quickAddForm.mealType, description: quickAddForm.description, calories: parseInt(quickAddForm.calories) || 0, proteinG: parseInt(quickAddForm.proteinG) || 0, carbsG: parseInt(quickAddForm.carbsG) || 0, fatG: parseInt(quickAddForm.fatG) || 0 });
       setShowQuickAdd(false);
       setQuickAddForm({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '' });
+      setFoodSearchResults([]);
       loadDay();
     } catch (err) { console.error(err); }
   };
@@ -188,7 +238,26 @@ export default function DailyTracker() {
                       {editingLog?.id === log.id ? (
                         /* Edit mode */
                         <div className="space-y-2">
-                          <input type="text" value={editingLog.description} onChange={(e) => setEditingLog({...editingLog, description: e.target.value})} className="input-field text-sm" placeholder="What did you eat?" />
+                          <div className="relative">
+                            <input type="text" value={editingLog.description}
+                              onChange={(e) => { setEditingLog({...editingLog, description: e.target.value}); handleFoodSearch(e.target.value); }}
+                              className="input-field text-sm" placeholder="Search food or type what you ate..." />
+                            {foodSearchResults.length > 0 && (
+                              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-36 overflow-y-auto">
+                                {foodSearchResults.map((food, idx) => (
+                                  <button key={idx} type="button" onClick={() => selectFood(food, 'edit')}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs">
+                                    <div className="flex-1 truncate">{food.name} {food.brand && `(${food.brand})`}</div>
+                                    <span className="text-gray-400 whitespace-nowrap">{food.calories} cal</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <label className="btn-secondary text-xs flex items-center gap-1 cursor-pointer justify-center py-1.5">
+                            📷 {analyzingPhoto ? 'Analyzing...' : 'Photo'}
+                            <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
+                          </label>
                           <div className="grid grid-cols-4 gap-2">
                             <input type="number" value={editingLog.calories} onChange={(e) => setEditingLog({...editingLog, calories: e.target.value})} className="input-field text-xs" placeholder="Cal" />
                             <input type="number" value={editingLog.proteinG} onChange={(e) => setEditingLog({...editingLog, proteinG: e.target.value})} className="input-field text-xs" placeholder="Prot" />
@@ -261,7 +330,37 @@ export default function DailyTracker() {
                   <option value="dinner">🌙 Dinner</option>
                   <option value="snack">🍿 Snack</option>
                 </select>
-                <input type="text" placeholder="What did you eat?" value={quickAddForm.description} onChange={(e) => setQuickAddForm({...quickAddForm, description: e.target.value})} className="input-field" required />
+
+                {/* Food search with autocomplete */}
+                <div className="relative">
+                  <input type="text" placeholder="Search food or type what you ate..." value={quickAddForm.description}
+                    onChange={(e) => { setQuickAddForm({...quickAddForm, description: e.target.value}); handleFoodSearch(e.target.value); }}
+                    className="input-field" required />
+                  {searchingFood && <span className="absolute right-3 top-3 text-xs text-gray-400">Searching...</span>}
+                  {foodSearchResults.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
+                      {foodSearchResults.map((food, idx) => (
+                        <button key={idx} type="button" onClick={() => selectFood(food, 'quickAdd')}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm border-b border-gray-50 dark:border-gray-700 last:border-0">
+                          {food.image && <img src={food.image} alt="" className="w-8 h-8 rounded object-cover" />}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{food.name}</p>
+                            <p className="text-xs text-gray-400">{food.calories} cal · {food.protein}g P · {food.carbs}g C · {food.fat}g F</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Photo capture */}
+                <div className="flex gap-2">
+                  <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer flex-1 justify-center">
+                    📷 {analyzingPhoto ? 'Analyzing...' : 'Snap a Photo'}
+                    <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'quickAdd')} className="hidden" disabled={analyzingPhoto} />
+                  </label>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <input type="number" placeholder="Calories" value={quickAddForm.calories} onChange={(e) => setQuickAddForm({...quickAddForm, calories: e.target.value})} className="input-field text-sm" />
                   <input type="number" placeholder="Protein (g)" value={quickAddForm.proteinG} onChange={(e) => setQuickAddForm({...quickAddForm, proteinG: e.target.value})} className="input-field text-sm" />
