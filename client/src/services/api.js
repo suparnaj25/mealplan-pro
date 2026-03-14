@@ -154,6 +154,26 @@ class ApiService {
     return this.request(`/user-recipes/${id}`, { method: 'DELETE' });
   }
 
+  // Tracker
+  getDaily(date) {
+    return this.request(`/tracker/daily?date=${date}`);
+  }
+  syncPlan(date) {
+    return this.request('/tracker/sync-plan', { method: 'POST', body: JSON.stringify({ date }) });
+  }
+  updateLog(logId, data) {
+    return this.request(`/tracker/${logId}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  quickAddFood(data) {
+    return this.request('/tracker/quick-add', { method: 'POST', body: JSON.stringify(data) });
+  }
+  deleteLog(logId) {
+    return this.request(`/tracker/${logId}`, { method: 'DELETE' });
+  }
+  getWeeklySummary(startDate) {
+    return this.request(`/tracker/weekly?startDate=${startDate}`);
+  }
+
   // Recipes
   searchRecipes(params) {
     const qs = new URLSearchParams(params).toString();

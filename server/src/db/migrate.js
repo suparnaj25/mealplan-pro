@@ -172,6 +172,32 @@ CREATE TABLE IF NOT EXISTS grocery_list_items (
   store_product_id TEXT
 );
 
+CREATE TABLE IF NOT EXISTS meal_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  meal_type TEXT NOT NULL,
+  recipe_name TEXT,
+  recipe_id TEXT,
+  status TEXT DEFAULT 'planned',
+  actual_description TEXT,
+  calories INTEGER DEFAULT 0,
+  protein_g INTEGER DEFAULT 0,
+  carbs_g INTEGER DEFAULT 0,
+  fat_g INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS daily_weight (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  weight REAL,
+  unit TEXT DEFAULT 'lb',
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, date)
+);
+
 CREATE TABLE IF NOT EXISTS user_recipes (
   id TEXT PRIMARY KEY,
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,

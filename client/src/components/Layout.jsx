@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Bot } from 'lucide-react';
+import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Bot, Activity } from 'lucide-react';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 
 const navItems = [
-  { path: '/', icon: CalendarDays, label: 'Meal Plan' },
-  { path: '/my-recipes', icon: ChefHat, label: 'My Recipes' },
-  { path: '/groceries', icon: ShoppingCart, label: 'Grocery List' },
+  { path: '/', icon: CalendarDays, label: 'Meals' },
+  { path: '/tracker', icon: Activity, label: 'Tracker' },
+  { path: '/groceries', icon: ShoppingCart, label: 'Groceries' },
   { path: '/pantry', icon: Package, label: 'Pantry' },
+  { path: '/my-recipes', icon: ChefHat, label: 'Recipes' },
   { path: '/ai', icon: Bot, label: 'AI' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];

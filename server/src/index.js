@@ -38,6 +38,7 @@ app.use('/api/recipes', recipesRoutes);
 app.use('/api/kroger', krogerRoutes);
 app.use('/api/user-recipes', userRecipesRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/tracker', require('./routes/tracker'));
 
 // Serve static React build in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

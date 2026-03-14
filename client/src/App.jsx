@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import MyRecipes from './pages/MyRecipes';
 import RecipeDetail from './pages/RecipeDetail';
 import AiAssistant from './pages/AiAssistant';
+import DailyTracker from './pages/DailyTracker';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore();
@@ -74,6 +75,7 @@ export default function App() {
         <Route path="pantry" element={<Pantry />} />
         <Route path="settings" element={<Settings />} />
         <Route path="recipe/:id" element={<RecipeDetail />} />
+        <Route path="tracker" element={<DailyTracker />} />
         <Route path="ai" element={<AiAssistant />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
