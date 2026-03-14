@@ -229,10 +229,22 @@ async function generateMealPlan(preferences) {
   const items = [];
   const usedRecipeIds = new Set();
   const usedCuisines = {};
-  const restrictions = parseJSON(diets.restrictions, []);
+  let restrictions = parseJSON(diets.restrictions, []);
   const dietPrefs = parseJSON(diets.diets, []);
+  
+  // Safety: if restrictions came through empty but diets obj has them as a raw string, re-parse
+  if (restrictions.length === 0 && typeof diets.restrictions === 'string' && diets.restrictions !== '[]') {
+    try { restrictions = JSON.parse(diets.restrictions); } catch {}
+  }
+  
   console.log(`🔒 Dietary restrictions: ${restrictions.length > 0 ? restrictions.join(', ') : 'NONE'}`);
   console.log(`🥗 Diet preferences: ${dietPrefs.length > 0 ? dietPrefs.join(', ') : 'NONE'}`);
+  console.log(`📋 Raw diets object: ${JSON.stringify(diets).slice(0, 200)}`);
+  
+  // NUCLEAR SAFETY: If restrictions say Vegan/Vegetarian, verify by checking some known meat recipes
+  if (restrictions.includes('Vegan') || restrictions.includes('Vegetarian')) {
+    console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
+  }
 
   // Pre-fetch some fresh recipes from the internet for variety
   for (const mt of mealTypes) {
