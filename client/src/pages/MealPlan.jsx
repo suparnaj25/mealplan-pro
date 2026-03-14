@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { CalendarDays, RefreshCw, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, SkipForward } from 'lucide-react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { getRecipeImage } from '../utils/foodImages';
+import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
@@ -29,6 +29,19 @@ export default function MealPlan() {
   const navigate = useNavigate();
 
   useEffect(() => { loadPlan(); }, [weekStart]);
+  
+  // Dynamically fetch images for all recipes
+  const [recipeImages, setRecipeImages] = useState({});
+  useEffect(() => {
+    if (items.length > 0) {
+      items.forEach(async (item) => {
+        if (!recipeImages[item.recipe_name]) {
+          const url = await fetchRecipeImage(item.recipe_name);
+          if (url) setRecipeImages(prev => ({ ...prev, [item.recipe_name]: url }));
+        }
+      });
+    }
+  }, [items]);
 
   const loadPlan = async () => {
     setLoading(true);
@@ -208,7 +221,7 @@ export default function MealPlan() {
                     >
                       {/* Food image */}
                       <div className="relative h-32 overflow-hidden">
-                        <img src={item.image_url || getRecipeImage(item.recipe_name, item.meal_type)} alt={item.recipe_name}
+                        <img src={recipeImages[item.recipe_name] || item.image_url || getRecipeImage(item.recipe_name, item.meal_type)} alt={item.recipe_name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                         <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1">

@@ -40,6 +40,7 @@ app.use('/api/user-recipes', userRecipesRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/food', require('./routes/foodSearch'));
+app.use('/api/images', require('./routes/images'));
 
 // Serve static React build in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
