@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { CalendarDays, RefreshCw, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, SkipForward } from 'lucide-react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import { getRecipeImage } from '../utils/foodImages';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
@@ -202,13 +203,21 @@ export default function MealPlan() {
                   {groupedByDay[dayIdx].map((item) => (
                     <div
                       key={item.id}
-                      className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 card-hover cursor-pointer group"
+                      className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 card-hover cursor-pointer group"
                       onClick={() => navigate(`/recipe/${item.recipe_id}`, { state: { recipe: { ...item, name: item.recipe_name, id: item.recipe_id } } })}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold uppercase text-gray-400 flex items-center gap-1">
+                      {/* Food image */}
+                      <div className="relative h-32 overflow-hidden">
+                        <img src={item.image_url || getRecipeImage(item.recipe_name, item.meal_type)} alt={item.recipe_name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                        <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1">
                           {MEAL_ICONS[item.meal_type]} {item.meal_type}
                         </span>
+                      </div>
+                      <div className="p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <div />
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock' : 'Lock'}>
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
@@ -237,6 +246,7 @@ export default function MealPlan() {
                       )}
                       <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity">
                         View Recipe →
+                      </div>
                       </div>
                     </div>
                   ))}
