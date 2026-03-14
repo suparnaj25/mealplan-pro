@@ -254,7 +254,31 @@ async function generateMealPlan(preferences) {
   // Pre-load all recipes with nutrition data
   const recipeCache = {};
   for (const mt of mealTypes) {
-    recipeCache[mt] = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition FROM recipes WHERE meal_type = ?').all(mt);
+    let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name FROM recipes WHERE meal_type = ?').all(mt);
+    
+    // ZERO TOLERANCE: If AI is available and we have dietary restrictions,
+    // use AI to verify every recipe's compliance (batch check)
+    if (restrictions.length > 0 && aiService && aiService.isConfigured()) {
+      try {
+        const verified = await aiVerifyRecipeCompliance(recipes, restrictions);
+        const beforeCount = recipes.length;
+        recipes = recipes.filter(r => verified[r.id] !== false);
+        
+        // Purge non-compliant recipes from DB cache (TheMealDB ones)
+        const purged = Object.entries(verified).filter(([id, ok]) => !ok);
+        for (const [id] of purged) {
+          try { db.prepare('DELETE FROM recipes WHERE id = ? AND source = ?').run(id, 'themealdb'); } catch {}
+        }
+        
+        console.log(`🤖 AI dietary verification for ${mt}: ${beforeCount} → ${recipes.length} (purged ${purged.length} non-compliant)`);
+      } catch (err) {
+        console.error(`AI dietary check failed for ${mt}, falling back to keyword filter:`, err.message);
+        // Fallback to keyword filter
+        recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
+      }
+    }
+    
+    recipeCache[mt] = recipes;
   }
 
   for (let day = 0; day < 7; day++) {
@@ -472,6 +496,72 @@ Compute scale factors so the scaled totals match the targets as closely as possi
   }
 
   return optimizedItems;
+}
+
+/**
+ * AI-powered dietary compliance verification.
+ * Sends recipe names and ingredients to AI in batches and asks:
+ * "Does this recipe comply with [restrictions]?"
+ * Returns { recipeId: true/false }
+ */
+async function aiVerifyRecipeCompliance(recipes, restrictions) {
+  const result = {};
+  const restrictionStr = restrictions.join(', ');
+  
+  // Process in batches of 20 to stay within token limits
+  const batchSize = 20;
+  for (let i = 0; i < recipes.length; i += batchSize) {
+    const batch = recipes.slice(i, i + batchSize);
+    
+    const recipeList = batch.map((r, idx) => {
+      const ings = parseJSON(r.ingredients, []);
+      const ingNames = ings.map(ing => ing.name).join(', ');
+      return `${idx + 1}. "${r.name || 'Unknown'}" — Ingredients: ${ingNames || 'unknown'}`;
+    }).join('\n');
+
+    try {
+      const response = await aiService.chatCompletion([
+        {
+          role: 'system',
+          content: `You are a strict dietary compliance checker. ZERO TOLERANCE.
+
+For each recipe, determine if it complies with these dietary restrictions: ${restrictionStr}
+
+Rules:
+- Vegan: NO animal products whatsoever (no meat, fish, seafood, dairy, eggs, honey, gelatin, bone broth, animal fat, worcestershire sauce)
+- Vegetarian: NO meat, fish, or seafood of any kind (dairy and eggs are OK)
+- Pescatarian: NO meat (fish and seafood ARE allowed, dairy and eggs OK)
+- Dairy-Free: NO dairy products (milk, cheese, butter, cream, yogurt, whey)
+- Gluten-Free: NO wheat, barley, rye, regular pasta, bread, soy sauce
+
+Return ONLY a JSON array of booleans, one per recipe. true = compliant, false = violates restrictions.
+Example: [true, false, true, true]`
+        },
+        {
+          role: 'user',
+          content: `Check these ${batch.length} recipes against: ${restrictionStr}\n\n${recipeList}\n\nReturn JSON array of booleans only.`
+        }
+      ], { temperature: 0, maxTokens: 200 });
+
+      const compliance = JSON.parse(response.trim());
+      if (Array.isArray(compliance) && compliance.length === batch.length) {
+        batch.forEach((r, idx) => {
+          result[r.id] = compliance[idx];
+          if (!compliance[idx]) {
+            console.log(`    ❌ REJECTED: "${r.name}" — violates ${restrictionStr}`);
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`AI compliance check batch failed:`, err.message);
+      // On failure, fall back to keyword check for this batch
+      batch.forEach(r => {
+        result[r.id] = recipePassesRestrictions(r, restrictions);
+      });
+    }
+  }
+  
+  return result;
 }
 
 module.exports = { generateMealPlan, recipePassesRestrictions };
