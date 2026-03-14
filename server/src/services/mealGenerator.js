@@ -123,6 +123,40 @@ const MEALDB_SEARCH_TERMS = {
   snack: ['hummus', 'fruit', 'nuts', 'energy', 'dip'],
 };
 
+async function fetchAndCacheFromInternetWithTerm(mealType, restrictions, searchTerm) {
+  try {
+    const res = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.meals) return [];
+
+    for (const m of data.meals) {
+      const extId = `mealdb-${m.idMeal}`;
+      const existing = db.prepare('SELECT id FROM recipes WHERE source = ? AND external_id = ?').get('themealdb', extId);
+      if (existing) continue;
+
+      const ingredients = [];
+      for (let i = 1; i <= 20; i++) {
+        const name = m[`strIngredient${i}`];
+        const measure = m[`strMeasure${i}`];
+        if (name && name.trim()) {
+          ingredients.push({ name: name.trim(), quantity: 1, unit: (measure || '').trim(), category: 'Other' });
+        }
+      }
+
+      try {
+        db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, image_url, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(uuidv4(), 'themealdb', extId, m.strMeal, (m.strInstructions || '').slice(0, 200), m.strArea || null,
+            JSON.stringify(m.strTags ? m.strTags.split(',').map(t => t.trim().toLowerCase()) : []), mealType,
+            JSON.stringify(ingredients), JSON.stringify(m.strInstructions ? m.strInstructions.split('\r\n').filter(Boolean).slice(0, 10) : []),
+            JSON.stringify({ calories: 400, protein: 20, carbs: 40, fat: 15 }), m.strMealThumb || null, 15, 30, 4);
+      } catch (e) { /* duplicate */ }
+    }
+  } catch (error) {
+    console.error(`TheMealDB fetch with term "${searchTerm}" error:`, error.message);
+  }
+}
+
 async function fetchAndCacheFromInternet(mealType, restrictions) {
   // Use vegan-friendly search terms if restrictions include Vegan or Vegetarian
   const isVeganOrVeg = restrictions.some(r => ['Vegan', 'Vegetarian'].includes(r));
@@ -274,9 +308,27 @@ async function generateMealPlan(preferences) {
     console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
   }
 
-  // Pre-fetch some fresh recipes from the internet for variety
+  // Pre-fetch fresh recipes — use AI search terms if available (#2)
   for (const mt of mealTypes) {
-    try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
+    try {
+      // Use AI-generated search terms for better recipe discovery
+      if (aiService && aiService.isConfigured()) {
+        try {
+          const cuisinePrefs = parseJSON(cuisines?.favorite_cuisines, []);
+          const aiTerms = await aiService.generateSearchTerms(mt, restrictions, cuisinePrefs);
+          if (aiTerms.length > 0) {
+            console.log(`🔍 AI search terms for ${mt}: ${aiTerms.join(', ')}`);
+            // Fetch using AI-suggested terms
+            for (const term of aiTerms.slice(0, 2)) {
+              try { await fetchAndCacheFromInternetWithTerm(mt, restrictions, term); } catch {}
+            }
+          }
+        } catch (err) {
+          console.log(`AI search terms failed for ${mt}, using defaults`);
+        }
+      }
+      await fetchAndCacheFromInternet(mt, restrictions);
+    } catch (e) { /* non-fatal */ }
   }
 
   // Pre-load all recipes with nutrition data
@@ -351,6 +403,28 @@ async function generateMealPlan(preferences) {
       if (candidates.length === 0) {
         candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
         console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions`);
+      }
+
+      // If still no candidates, use AI to generate a recipe on-the-fly (#4)
+      if (candidates.length === 0 && aiService && aiService.isConfigured()) {
+        try {
+          console.log(`    🤖 No candidates for ${mealType} — AI generating recipe...`);
+          const cuisinePrefs = parseJSON(cuisines?.favorite_cuisines, []);
+          const aiRecipe = await aiService.generateRecipe(mealType, restrictions, mealTarget, cuisinePrefs);
+          
+          // Save AI-generated recipe to DB
+          const recipeId = uuidv4();
+          db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(recipeId, 'ai-generated', `ai-${Date.now()}`, aiRecipe.name, aiRecipe.description, aiRecipe.cuisine,
+              JSON.stringify(aiRecipe.diet_tags || []), mealType, JSON.stringify(aiRecipe.ingredients || []),
+              JSON.stringify(aiRecipe.instructions || []), JSON.stringify(aiRecipe.nutrition || {}),
+              aiRecipe.prep_time_minutes || 20, aiRecipe.cook_time_minutes || 25, aiRecipe.servings || 4);
+          
+          candidates = [{ id: recipeId, cuisine: aiRecipe.cuisine, diet_tags: JSON.stringify(aiRecipe.diet_tags || []), ingredients: JSON.stringify(aiRecipe.ingredients || []), nutrition: JSON.stringify(aiRecipe.nutrition || {}), name: aiRecipe.name }];
+          console.log(`    ✅ AI created: "${aiRecipe.name}"`);
+        } catch (err) {
+          console.error(`    AI recipe generation failed:`, err.message);
+        }
       }
 
       if (candidates.length === 0) continue;

@@ -222,6 +222,18 @@ class ApiService {
   aiNutritionReport(planId) {
     return this.request('/ai/nutrition-report', { method: 'POST', body: JSON.stringify({ planId }) });
   }
+  aiGenerateRecipe(mealType, macroTargets) {
+    return this.request('/ai/generate-recipe', { method: 'POST', body: JSON.stringify({ mealType, macroTargets }) });
+  }
+  aiInterpretDiet(text) {
+    return this.request('/ai/interpret-diet', { method: 'POST', body: JSON.stringify({ text }) });
+  }
+  aiCalculateMacros(profile) {
+    return this.request('/ai/calculate-macros', { method: 'POST', body: JSON.stringify({ profile }) });
+  }
+  aiSearchTerms(mealType) {
+    return this.request('/ai/search-terms', { method: 'POST', body: JSON.stringify({ mealType }) });
+  }
 }
 
 export const api = new ApiService();

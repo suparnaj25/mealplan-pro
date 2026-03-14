@@ -93,4 +93,68 @@ router.post('/nutrition-report', async (req, res) => {
   }
 });
 
+// POST /api/ai/generate-recipe — #4: AI Recipe Generation
+router.post('/generate-recipe', async (req, res) => {
+  try {
+    const { mealType, macroTargets } = req.body;
+    if (!mealType) return res.status(400).json({ error: 'mealType required' });
+
+    const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+    const diets = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id);
+    const cuisines = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(req.user.id);
+    const restrictions = diets ? parseJSON(diets.restrictions, []) : [];
+    const cuisinePrefs = cuisines ? parseJSON(cuisines.favorite_cuisines, []) : [];
+
+    const result = await ai.generateRecipe(mealType, restrictions, macroTargets || {}, cuisinePrefs);
+    res.json(result);
+  } catch (error) {
+    console.error('AI generate-recipe error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/interpret-diet — #7: AI Dietary Interpretation
+router.post('/interpret-diet', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const result = await ai.interpretDietaryInput(text);
+    res.json(result);
+  } catch (error) {
+    console.error('AI interpret-diet error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/calculate-macros — #8: AI Macro Calculator
+router.post('/calculate-macros', async (req, res) => {
+  try {
+    const { profile } = req.body;
+    if (!profile) return res.status(400).json({ error: 'profile required' });
+    const result = await ai.calculatePersonalizedMacros(profile);
+    res.json(result);
+  } catch (error) {
+    console.error('AI calculate-macros error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/search-terms — #2: AI Recipe Discovery
+router.post('/search-terms', async (req, res) => {
+  try {
+    const { mealType } = req.body;
+    const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+    const diets = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id);
+    const cuisines = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(req.user.id);
+    const restrictions = diets ? parseJSON(diets.restrictions, []) : [];
+    const cuisinePrefs = cuisines ? parseJSON(cuisines.favorite_cuisines, []) : [];
+
+    const terms = await ai.generateSearchTerms(mealType || 'dinner', restrictions, cuisinePrefs);
+    res.json({ terms });
+  } catch (error) {
+    console.error('AI search-terms error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

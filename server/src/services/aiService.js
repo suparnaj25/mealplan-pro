@@ -429,6 +429,121 @@ async function generateRecipeImage(recipeName, description, cuisine) {
   return { imageUrl, prompt };
 }
 
+// ── #4: AI Recipe Generation ──
+async function generateRecipe(mealType, restrictions, macroTargets, cuisinePrefs) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a professional chef and nutritionist. Create a complete recipe. Return JSON:
+{
+  "name": "Recipe Name",
+  "description": "Brief description",
+  "cuisine": "cuisine type",
+  "diet_tags": ["tag1"],
+  "meal_type": "${mealType}",
+  "ingredients": [{"name": "ingredient", "quantity": 1, "unit": "cup", "category": "Produce"}],
+  "instructions": ["Step 1", "Step 2"],
+  "nutrition": {"calories": 500, "protein": 30, "carbs": 50, "fat": 20, "fiber": 8},
+  "prep_time_minutes": 15,
+  "cook_time_minutes": 20,
+  "servings": 4
+}`
+    },
+    {
+      role: 'user',
+      content: `Create a ${mealType} recipe.
+Dietary restrictions: ${restrictions.join(', ') || 'None'}
+Target nutrition per serving: ~${macroTargets.calories || 500} cal, ~${macroTargets.protein || 30}g protein, ~${macroTargets.carbs || 50}g carbs, ~${macroTargets.fat || 20}g fat
+Preferred cuisines: ${cuisinePrefs.join(', ') || 'Any'}
+Make it delicious, practical, and precisely matching the nutrition targets.`
+    }
+  ], { jsonMode: true, temperature: 0.8 });
+
+  return JSON.parse(response);
+}
+
+// ── #2: AI Recipe Discovery (search terms) ──
+async function generateSearchTerms(mealType, restrictions, cuisinePrefs) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `Generate search terms for finding recipes. Return JSON: {"terms": ["term1", "term2", "term3", "term4", "term5"]}`
+    },
+    {
+      role: 'user',
+      content: `Generate 5 search terms for ${mealType} recipes that are ${restrictions.join(', ') || 'no restrictions'}, preferring ${cuisinePrefs.join(', ') || 'any'} cuisine. Terms should be specific food names, not generic words.`
+    }
+  ], { jsonMode: true, temperature: 0.9, maxTokens: 100 });
+
+  const result = JSON.parse(response);
+  return result.terms || [];
+}
+
+// ── #3: AI Meal Distribution ──
+async function calculateMealDistribution(userProfile) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `Calculate optimal calorie distribution across meals. Return JSON:
+{"breakfast": 0.25, "lunch": 0.35, "dinner": 0.35, "snack": 0.05}
+Values must sum to 1.0.`
+    },
+    {
+      role: 'user',
+      content: `User profile: ${JSON.stringify(userProfile)}
+Calculate the optimal meal calorie distribution. Consider their lifestyle, activity level, and goals.`
+    }
+  ], { jsonMode: true, temperature: 0.3, maxTokens: 100 });
+
+  return JSON.parse(response);
+}
+
+// ── #7: AI Dietary Interpretation (free-text) ──
+async function interpretDietaryInput(userText) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `Interpret dietary input into structured restrictions. Return JSON:
+{
+  "restrictions": ["Vegan", "Gluten-Free"],
+  "excludeIngredients": ["tomatoes", "peppers", "eggplant"],
+  "interpretation": "User has nightshade allergy and is vegan"
+}`
+    },
+    {
+      role: 'user',
+      content: `Interpret this dietary input: "${userText}". Identify all restrictions, specific ingredients to avoid, and explain your interpretation.`
+    }
+  ], { jsonMode: true, temperature: 0.2 });
+
+  return JSON.parse(response);
+}
+
+// ── #8: AI Macro Calculator ──
+async function calculatePersonalizedMacros(userProfile) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `Calculate personalized daily macro targets. Return JSON:
+{
+  "calories": 2000,
+  "protein": 150,
+  "carbs": 200,
+  "fat": 67,
+  "fiber": 30,
+  "reasoning": "Brief explanation"
+}`
+    },
+    {
+      role: 'user',
+      content: `Calculate daily macro targets for: ${JSON.stringify(userProfile)}
+Consider their age, weight, height, activity level, and goals. Use evidence-based formulas (Mifflin-St Jeor for BMR, activity multiplier for TDEE).`
+    }
+  ], { jsonMode: true, temperature: 0.2 });
+
+  return JSON.parse(response);
+}
+
 module.exports = {
   isConfigured,
   chatCompletion,
@@ -440,4 +555,9 @@ module.exports = {
   estimateBudget,
   nutritionInsights,
   generateRecipeImage,
+  generateRecipe,
+  generateSearchTerms,
+  calculateMealDistribution,
+  interpretDietaryInput,
+  calculatePersonalizedMacros,
 };
