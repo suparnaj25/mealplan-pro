@@ -45,11 +45,27 @@ const MEAL_TYPE_IMAGES = {
   'snack': 'https://images.unsplash.com/photo-1499028344343-cd173ffc68a9?w=400&h=300&fit=crop',
 };
 
+// Dynamic image: Uses Unsplash source redirect for ANY recipe name (no API key needed)
+// This generates a unique, relevant food photo for every recipe dynamically
+function getDynamicFoodImage(recipeName, width = 400, height = 300) {
+  // Clean the recipe name for a good search query
+  const cleaned = recipeName
+    .replace(/\(.*?\)/g, '') // Remove parentheses content
+    .replace(/[^a-zA-Z\s]/g, '') // Remove non-alpha chars
+    .trim()
+    .split(' ').slice(0, 3).join(' '); // Use first 3 words
+  return `https://source.unsplash.com/${width}x${height}/?${encodeURIComponent(cleaned + ' food')}`;
+}
+
 export function getRecipeImage(recipeName, mealType) {
   if (!recipeName) return MEAL_TYPE_IMAGES[mealType] || MEAL_TYPE_IMAGES.dinner;
   const name = recipeName.toLowerCase();
+  
+  // 1. Check curated images first (instant, guaranteed quality)
   for (const [keyword, url] of Object.entries(FOOD_IMAGES)) {
     if (name.includes(keyword)) return url;
   }
-  return MEAL_TYPE_IMAGES[mealType] || MEAL_TYPE_IMAGES.dinner;
+  
+  // 2. Dynamic Unsplash source for ANY recipe (real photo, matched to recipe name)
+  return getDynamicFoodImage(recipeName);
 }
