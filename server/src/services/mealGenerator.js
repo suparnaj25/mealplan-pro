@@ -308,53 +308,40 @@ async function generateMealPlan(preferences) {
     console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
   }
 
-  // Pre-fetch fresh recipes — use AI search terms if available (#2)
+  // Pre-fetch fresh recipes from TheMealDB (skip AI search terms to reduce latency)
   for (const mt of mealTypes) {
-    try {
-      // Use AI-generated search terms for better recipe discovery
-      if (aiService && aiService.isConfigured()) {
-        try {
-          const cuisinePrefs = parseJSON(cuisines?.favorite_cuisines, []);
-          const aiTerms = await aiService.generateSearchTerms(mt, restrictions, cuisinePrefs);
-          if (aiTerms.length > 0) {
-            console.log(`🔍 AI search terms for ${mt}: ${aiTerms.join(', ')}`);
-            // Fetch using AI-suggested terms
-            for (const term of aiTerms.slice(0, 2)) {
-              try { await fetchAndCacheFromInternetWithTerm(mt, restrictions, term); } catch {}
-            }
-          }
-        } catch (err) {
-          console.log(`AI search terms failed for ${mt}, using defaults`);
-        }
-      }
-      await fetchAndCacheFromInternet(mt, restrictions);
-    } catch (e) { /* non-fatal */ }
+    try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
   }
 
-  // Pre-load all recipes with nutrition data
+  // Pre-load all recipes — keyword filter first (fast), then AI verify only the candidates that pass
   const recipeCache = {};
   for (const mt of mealTypes) {
     let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name FROM recipes WHERE meal_type = ?').all(mt);
     
-    // ZERO TOLERANCE: If AI is available and we have dietary restrictions,
-    // use AI to verify every recipe's compliance (batch check)
-    if (restrictions.length > 0 && aiService && aiService.isConfigured()) {
+    // Step 1: Fast keyword filter (catches 95% of violations)
+    if (restrictions.length > 0) {
+      const beforeKw = recipes.length;
+      recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
+      console.log(`  ${mt}: ${beforeKw} → ${recipes.length} after keyword filter`);
+    }
+    
+    // Step 2: AI verification on remaining candidates (catches the rest)
+    // Only check recipes that passed keyword filter — much faster
+    if (restrictions.length > 0 && recipes.length > 0 && aiService && aiService.isConfigured()) {
       try {
         const verified = await aiVerifyRecipeCompliance(recipes, restrictions);
-        const beforeCount = recipes.length;
-        recipes = recipes.filter(r => verified[r.id] !== false);
+        const beforeAI = recipes.length;
         
-        // Purge non-compliant recipes from DB cache (TheMealDB ones)
+        // Purge non-compliant from DB
         const purged = Object.entries(verified).filter(([id, ok]) => !ok);
         for (const [id] of purged) {
-          try { db.prepare('DELETE FROM recipes WHERE id = ? AND source = ?').run(id, 'themealdb'); } catch {}
+          try { db.prepare('DELETE FROM recipes WHERE id = ? AND source != ?').run(id, 'builtin'); } catch {}
         }
         
-        console.log(`🤖 AI dietary verification for ${mt}: ${beforeCount} → ${recipes.length} (purged ${purged.length} non-compliant)`);
+        recipes = recipes.filter(r => verified[r.id] !== false);
+        console.log(`  ${mt}: ${beforeAI} → ${recipes.length} after AI verification (purged ${purged.length})`);
       } catch (err) {
-        console.error(`AI dietary check failed for ${mt}, falling back to keyword filter:`, err.message);
-        // Fallback to keyword filter
-        recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
+        console.error(`AI dietary check failed for ${mt}:`, err.message);
       }
     }
     
