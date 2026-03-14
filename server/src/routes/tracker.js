@@ -155,4 +155,82 @@ router.get('/weekly', (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// POST /api/tracker/weight — log weight
+router.post('/weight', (req, res) => {
+  try {
+    const { date, weight, unit } = req.body;
+    if (!date || !weight) return res.status(400).json({ error: 'date and weight required' });
+    const { v4: uuidv4 } = require('uuid');
+    db.prepare('INSERT INTO daily_weight (id, user_id, date, weight, unit) VALUES (?,?,?,?,?) ON CONFLICT(user_id, date) DO UPDATE SET weight=?, unit=?')
+      .run(uuidv4(), req.user.id, date, weight, unit || 'lb', weight, unit || 'lb');
+    res.json({ success: true });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/tracker/weight-history — get weight history
+router.get('/weight-history', (req, res) => {
+  try {
+    const weights = db.prepare('SELECT date, weight, unit FROM daily_weight WHERE user_id = ? ORDER BY date DESC LIMIT 30').all(req.user.id);
+    res.json({ weights: weights.reverse() });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/tracker/streaks — get user streaks
+router.get('/streaks', (req, res) => {
+  try {
+    // Count consecutive days with at least one 'eaten' log
+    const logs = db.prepare("SELECT DISTINCT date FROM meal_logs WHERE user_id = ? AND status IN ('eaten', 'modified') ORDER BY date DESC").all(req.user.id);
+    
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    const today = new Date().toISOString().split('T')[0];
+    
+    for (let i = 0; i < logs.length; i++) {
+      const logDate = logs[i].date;
+      if (i === 0) {
+        // Check if most recent log is today or yesterday
+        const diff = Math.floor((new Date(today) - new Date(logDate)) / (1000*60*60*24));
+        if (diff > 1) break;
+        tempStreak = 1;
+      } else {
+        const prev = new Date(logs[i-1].date);
+        const curr = new Date(logDate);
+        const dayDiff = Math.floor((prev - curr) / (1000*60*60*24));
+        if (dayDiff === 1) { tempStreak++; }
+        else break;
+      }
+    }
+    currentStreak = tempStreak;
+
+    // Count total logged days
+    const totalDays = logs.length;
+    
+    // Count days hitting protein target
+    const macros = db.prepare('SELECT protein_g FROM user_macros WHERE user_id = ?').get(req.user.id);
+    const proteinTarget = macros?.protein_g || 150;
+    let proteinHitDays = 0;
+    if (totalDays > 0) {
+      const last7 = db.prepare("SELECT date, SUM(protein_g) as total_protein FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') AND date >= date('now', '-7 days') GROUP BY date HAVING total_protein >= ?").all(req.user.id, proteinTarget);
+      proteinHitDays = last7.length;
+    }
+
+    res.json({
+      currentStreak,
+      totalDays,
+      proteinHitDays,
+      achievements: [
+        { id: 'first_log', name: 'First Log', icon: '🎉', earned: totalDays >= 1, desc: 'Logged your first meal' },
+        { id: 'streak_3', name: '3-Day Streak', icon: '🔥', earned: currentStreak >= 3, desc: '3 consecutive days of logging' },
+        { id: 'streak_7', name: 'Week Warrior', icon: '💪', earned: currentStreak >= 7, desc: '7-day logging streak' },
+        { id: 'streak_14', name: 'Consistency King', icon: '👑', earned: currentStreak >= 14, desc: '14-day logging streak' },
+        { id: 'streak_30', name: 'Monthly Master', icon: '🏆', earned: currentStreak >= 30, desc: '30-day logging streak' },
+        { id: 'protein_5', name: 'Protein Pro', icon: '💪', earned: proteinHitDays >= 5, desc: 'Hit protein target 5/7 days this week' },
+        { id: 'total_10', name: 'Dedicated', icon: '⭐', earned: totalDays >= 10, desc: 'Logged meals on 10+ different days' },
+        { id: 'total_30', name: 'Veteran', icon: '🎖️', earned: totalDays >= 30, desc: 'Logged meals on 30+ different days' },
+      ],
+    });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;

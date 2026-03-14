@@ -181,6 +181,15 @@ class ApiService {
   getWeeklySummary(startDate) {
     return this.request(`/tracker/weekly?startDate=${startDate}`);
   }
+  logWeight(date, weight, unit) {
+    return this.request('/tracker/weight', { method: 'POST', body: JSON.stringify({ date, weight, unit }) });
+  }
+  getWeightHistory() {
+    return this.request('/tracker/weight-history');
+  }
+  getStreaks() {
+    return this.request('/tracker/streaks');
+  }
 
   // Recipes
   searchRecipes(params) {

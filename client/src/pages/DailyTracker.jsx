@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2 } from 'lucide-react';
+import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame } from 'lucide-react';
 import { api } from '../services/api';
 
 const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
@@ -60,8 +60,31 @@ export default function DailyTracker() {
   const [searchingFood, setSearchingFood] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState(null);
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [weightInput, setWeightInput] = useState('');
+  const [weightHistory, setWeightHistory] = useState([]);
+  const [streaks, setStreaks] = useState(null);
+  const [showWeightForm, setShowWeightForm] = useState(false);
 
   useEffect(() => { loadDay(); }, [date]);
+  useEffect(() => { loadExtras(); }, []);
+
+  const loadExtras = async () => {
+    try {
+      const [w, s] = await Promise.all([api.getWeightHistory(), api.getStreaks()]);
+      setWeightHistory(w.weights || []);
+      setStreaks(s);
+    } catch {}
+  };
+
+  const handleLogWeight = async () => {
+    if (!weightInput) return;
+    try {
+      await api.logWeight(date, parseFloat(weightInput), 'lb');
+      setWeightInput('');
+      setShowWeightForm(false);
+      loadExtras();
+    } catch (err) { console.error(err); }
+  };
 
   const loadDay = async () => {
     setLoading(true);
@@ -312,6 +335,77 @@ export default function DailyTracker() {
             </motion.div>
           ))}
         </>
+      )}
+
+      {/* Weight Tracking */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm flex items-center gap-2"><Scale size={16} className="text-brand-500" /> Weight</h3>
+          <button onClick={() => setShowWeightForm(!showWeightForm)} className="text-xs text-brand-500 font-medium">{showWeightForm ? 'Cancel' : '+ Log Weight'}</button>
+        </div>
+        {showWeightForm && (
+          <div className="flex gap-2 mb-3">
+            <input type="number" placeholder="Weight (lb)" value={weightInput} onChange={(e) => setWeightInput(e.target.value)} className="input-field text-sm flex-1" step="0.1" />
+            <button onClick={handleLogWeight} className="btn-primary text-sm">Save</button>
+          </div>
+        )}
+        {weightHistory.length > 0 ? (
+          <div>
+            <div className="flex items-end gap-1 h-20">
+              {weightHistory.slice(-14).map((w, i) => {
+                const min = Math.min(...weightHistory.map(x => x.weight));
+                const max = Math.max(...weightHistory.map(x => x.weight));
+                const range = max - min || 1;
+                const h = ((w.weight - min) / range) * 60 + 10;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full bg-brand-500/20 rounded-t" style={{ height: `${h}px` }}>
+                      <div className="w-full h-full bg-brand-500 rounded-t opacity-60 hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[10px] text-gray-400">{weightHistory[0]?.date?.slice(5)}</span>
+              <span className="text-xs font-semibold">{weightHistory[weightHistory.length-1]?.weight} lb</span>
+              <span className="text-[10px] text-gray-400">{weightHistory[weightHistory.length-1]?.date?.slice(5)}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center">No weight data yet. Log your first weigh-in!</p>
+        )}
+      </motion.div>
+
+      {/* Streaks & Achievements */}
+      {streaks && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
+          <h3 className="font-semibold text-sm flex items-center gap-2 mb-3"><Trophy size={16} className="text-brand-500" /> Streaks & Achievements</h3>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
+              <Flame size={20} className="mx-auto text-orange-500 mb-1" />
+              <p className="text-lg font-bold">{streaks.currentStreak}</p>
+              <p className="text-[10px] text-gray-500">Day Streak</p>
+            </div>
+            <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+              <Activity size={20} className="mx-auto text-blue-500 mb-1" />
+              <p className="text-lg font-bold">{streaks.totalDays}</p>
+              <p className="text-[10px] text-gray-500">Total Days</p>
+            </div>
+            <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+              <Trophy size={20} className="mx-auto text-green-500 mb-1" />
+              <p className="text-lg font-bold">{streaks.proteinHitDays}/7</p>
+              <p className="text-[10px] text-gray-500">Protein Target</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {streaks.achievements.map(a => (
+              <div key={a.id} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all ${a.earned ? 'bg-brand-500/10 text-brand-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`} title={a.desc}>
+                <span>{a.icon}</span> {a.name}
+              </div>
+            ))}
+          </div>
+        </motion.div>
       )}
 
       {/* Quick Add Modal */}
