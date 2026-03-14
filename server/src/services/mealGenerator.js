@@ -179,10 +179,38 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
       } catch (e) { /* duplicate, skip */ }
     }
 
-    return newRecipes.filter(r => {
+    // First pass: keyword filter
+    let filtered = newRecipes.filter(r => {
       const fullRecipe = db.prepare('SELECT id, ingredients FROM recipes WHERE id = ?').get(r.id);
       return fullRecipe && recipePassesRestrictions(fullRecipe, restrictions);
     });
+
+    // Second pass: AI verification on newly fetched recipes (zero tolerance)
+    if (restrictions.length > 0 && filtered.length > 0 && aiService && aiService.isConfigured()) {
+      try {
+        const fullRecipes = filtered.map(r => {
+          const full = db.prepare('SELECT id, name, ingredients FROM recipes WHERE id = ?').get(r.id);
+          return full || r;
+        });
+        const verified = await aiVerifyRecipeCompliance(fullRecipes, restrictions);
+        const beforeAI = filtered.length;
+        
+        // Delete non-compliant recipes from DB immediately
+        for (const [id, ok] of Object.entries(verified)) {
+          if (!ok) {
+            try { db.prepare('DELETE FROM recipes WHERE id = ?').run(id); } catch {}
+            console.log(`    🗑️ Purged non-compliant TheMealDB recipe from cache: ${id}`);
+          }
+        }
+        
+        filtered = filtered.filter(r => verified[r.id] !== false);
+        console.log(`    🤖 AI verified ${beforeAI} new TheMealDB recipes → ${filtered.length} compliant`);
+      } catch (err) {
+        console.error('AI verification of new recipes failed:', err.message);
+      }
+    }
+
+    return filtered;
   } catch (error) {
     console.error('TheMealDB fetch error:', error.message);
     return [];
