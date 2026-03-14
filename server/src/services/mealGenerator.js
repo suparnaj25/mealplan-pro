@@ -6,16 +6,16 @@ try { aiService = require('./aiService'); } catch(e) { aiService = null; }
 // ── Restriction rules ──
 const RESTRICTION_EXCLUDE_RULES = {
   'Vegan': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','prawn','prawns','goat','duck','venison','bison','rabbit','veal','scallop','scallops','squid','octopus','clam','clams','mussel','mussels','oyster','oysters','meat','liver','bone','broth','lard','gelatin','suet','dripping','worcestershire'],
     standaloneExcludes: ['egg','eggs','egg whites','milk','butter','cream','heavy cream','sour cream','cheese','parmesan','parmesan cheese','mozzarella','cheddar','cheddar cheese','feta','feta cheese','goat cheese','cream cheese','cottage cheese','yogurt','greek yogurt','honey'],
     safeCompounds: ['almond milk','coconut milk','oat milk','soy milk','rice milk','cashew milk','peanut butter','almond butter','cashew butter','sunflower butter','coconut butter','coconut cream','cream of tartar','nutritional yeast'],
   },
   'Vegetarian': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','salmon','shrimp','tuna','fish','steak','ribeye','bacon','ham','sausage','cod','tilapia','anchovy','crab','lobster','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','prawn','prawns','goat','duck','venison','bison','rabbit','veal','scallop','scallops','squid','octopus','clam','clams','mussel','mussels','oyster','oysters','meat','liver','bone broth','lard','suet'],
     standaloneExcludes: [], safeCompounds: [],
   },
   'Pescatarian': {
-    exactExcludes: ['chicken','beef','pork','turkey','lamb','steak','ribeye','bacon','ham','sausage','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh'],
+    exactExcludes: ['chicken','beef','pork','turkey','lamb','steak','ribeye','bacon','ham','sausage','ground beef','ground chicken','ground turkey','ground meat','chicken breast','chicken thigh','goat','duck','venison','bison','rabbit','veal','liver','lard','suet'],
     standaloneExcludes: [], safeCompounds: [],
   },
   'Gluten-Free': {
@@ -123,6 +123,40 @@ const MEALDB_SEARCH_TERMS = {
   snack: ['hummus', 'fruit', 'nuts', 'energy', 'dip'],
 };
 
+async function fetchAndCacheFromInternetWithTerm(mealType, restrictions, searchTerm) {
+  try {
+    const res = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.meals) return [];
+
+    for (const m of data.meals) {
+      const extId = `mealdb-${m.idMeal}`;
+      const existing = db.prepare('SELECT id FROM recipes WHERE source = ? AND external_id = ?').get('themealdb', extId);
+      if (existing) continue;
+
+      const ingredients = [];
+      for (let i = 1; i <= 20; i++) {
+        const name = m[`strIngredient${i}`];
+        const measure = m[`strMeasure${i}`];
+        if (name && name.trim()) {
+          ingredients.push({ name: name.trim(), quantity: 1, unit: (measure || '').trim(), category: 'Other' });
+        }
+      }
+
+      try {
+        db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, image_url, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(uuidv4(), 'themealdb', extId, m.strMeal, (m.strInstructions || '').slice(0, 200), m.strArea || null,
+            JSON.stringify(m.strTags ? m.strTags.split(',').map(t => t.trim().toLowerCase()) : []), mealType,
+            JSON.stringify(ingredients), JSON.stringify(m.strInstructions ? m.strInstructions.split('\r\n').filter(Boolean).slice(0, 10) : []),
+            JSON.stringify({ calories: 400, protein: 20, carbs: 40, fat: 15 }), m.strMealThumb || null, 15, 30, 4);
+      } catch (e) { /* duplicate */ }
+    }
+  } catch (error) {
+    console.error(`TheMealDB fetch with term "${searchTerm}" error:`, error.message);
+  }
+}
+
 async function fetchAndCacheFromInternet(mealType, restrictions) {
   // Use vegan-friendly search terms if restrictions include Vegan or Vegetarian
   const isVeganOrVeg = restrictions.some(r => ['Vegan', 'Vegetarian'].includes(r));
@@ -179,10 +213,38 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
       } catch (e) { /* duplicate, skip */ }
     }
 
-    return newRecipes.filter(r => {
+    // First pass: keyword filter
+    let filtered = newRecipes.filter(r => {
       const fullRecipe = db.prepare('SELECT id, ingredients FROM recipes WHERE id = ?').get(r.id);
       return fullRecipe && recipePassesRestrictions(fullRecipe, restrictions);
     });
+
+    // Second pass: AI verification on newly fetched recipes (zero tolerance)
+    if (restrictions.length > 0 && filtered.length > 0 && aiService && aiService.isConfigured()) {
+      try {
+        const fullRecipes = filtered.map(r => {
+          const full = db.prepare('SELECT id, name, ingredients FROM recipes WHERE id = ?').get(r.id);
+          return full || r;
+        });
+        const verified = await aiVerifyRecipeCompliance(fullRecipes, restrictions);
+        const beforeAI = filtered.length;
+        
+        // Delete non-compliant recipes from DB immediately
+        for (const [id, ok] of Object.entries(verified)) {
+          if (!ok) {
+            try { db.prepare('DELETE FROM recipes WHERE id = ?').run(id); } catch {}
+            console.log(`    🗑️ Purged non-compliant TheMealDB recipe from cache: ${id}`);
+          }
+        }
+        
+        filtered = filtered.filter(r => verified[r.id] !== false);
+        console.log(`    🤖 AI verified ${beforeAI} new TheMealDB recipes → ${filtered.length} compliant`);
+      } catch (err) {
+        console.error('AI verification of new recipes failed:', err.message);
+      }
+    }
+
+    return filtered;
   } catch (error) {
     console.error('TheMealDB fetch error:', error.message);
     return [];
@@ -246,15 +308,57 @@ async function generateMealPlan(preferences) {
     console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
   }
 
-  // Pre-fetch some fresh recipes from the internet for variety
+  // Pre-fetch fresh recipes — use AI search terms if available (#2)
   for (const mt of mealTypes) {
-    try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
+    try {
+      // Use AI-generated search terms for better recipe discovery
+      if (aiService && aiService.isConfigured()) {
+        try {
+          const cuisinePrefs = parseJSON(cuisines?.favorite_cuisines, []);
+          const aiTerms = await aiService.generateSearchTerms(mt, restrictions, cuisinePrefs);
+          if (aiTerms.length > 0) {
+            console.log(`🔍 AI search terms for ${mt}: ${aiTerms.join(', ')}`);
+            // Fetch using AI-suggested terms
+            for (const term of aiTerms.slice(0, 2)) {
+              try { await fetchAndCacheFromInternetWithTerm(mt, restrictions, term); } catch {}
+            }
+          }
+        } catch (err) {
+          console.log(`AI search terms failed for ${mt}, using defaults`);
+        }
+      }
+      await fetchAndCacheFromInternet(mt, restrictions);
+    } catch (e) { /* non-fatal */ }
   }
 
   // Pre-load all recipes with nutrition data
   const recipeCache = {};
   for (const mt of mealTypes) {
-    recipeCache[mt] = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition FROM recipes WHERE meal_type = ?').all(mt);
+    let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name FROM recipes WHERE meal_type = ?').all(mt);
+    
+    // ZERO TOLERANCE: If AI is available and we have dietary restrictions,
+    // use AI to verify every recipe's compliance (batch check)
+    if (restrictions.length > 0 && aiService && aiService.isConfigured()) {
+      try {
+        const verified = await aiVerifyRecipeCompliance(recipes, restrictions);
+        const beforeCount = recipes.length;
+        recipes = recipes.filter(r => verified[r.id] !== false);
+        
+        // Purge non-compliant recipes from DB cache (TheMealDB ones)
+        const purged = Object.entries(verified).filter(([id, ok]) => !ok);
+        for (const [id] of purged) {
+          try { db.prepare('DELETE FROM recipes WHERE id = ? AND source = ?').run(id, 'themealdb'); } catch {}
+        }
+        
+        console.log(`🤖 AI dietary verification for ${mt}: ${beforeCount} → ${recipes.length} (purged ${purged.length} non-compliant)`);
+      } catch (err) {
+        console.error(`AI dietary check failed for ${mt}, falling back to keyword filter:`, err.message);
+        // Fallback to keyword filter
+        recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
+      }
+    }
+    
+    recipeCache[mt] = recipes;
   }
 
   for (let day = 0; day < 7; day++) {
@@ -299,6 +403,28 @@ async function generateMealPlan(preferences) {
       if (candidates.length === 0) {
         candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
         console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions`);
+      }
+
+      // If still no candidates, use AI to generate a recipe on-the-fly (#4)
+      if (candidates.length === 0 && aiService && aiService.isConfigured()) {
+        try {
+          console.log(`    🤖 No candidates for ${mealType} — AI generating recipe...`);
+          const cuisinePrefs = parseJSON(cuisines?.favorite_cuisines, []);
+          const aiRecipe = await aiService.generateRecipe(mealType, restrictions, mealTarget, cuisinePrefs);
+          
+          // Save AI-generated recipe to DB
+          const recipeId = uuidv4();
+          db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(recipeId, 'ai-generated', `ai-${Date.now()}`, aiRecipe.name, aiRecipe.description, aiRecipe.cuisine,
+              JSON.stringify(aiRecipe.diet_tags || []), mealType, JSON.stringify(aiRecipe.ingredients || []),
+              JSON.stringify(aiRecipe.instructions || []), JSON.stringify(aiRecipe.nutrition || {}),
+              aiRecipe.prep_time_minutes || 20, aiRecipe.cook_time_minutes || 25, aiRecipe.servings || 4);
+          
+          candidates = [{ id: recipeId, cuisine: aiRecipe.cuisine, diet_tags: JSON.stringify(aiRecipe.diet_tags || []), ingredients: JSON.stringify(aiRecipe.ingredients || []), nutrition: JSON.stringify(aiRecipe.nutrition || {}), name: aiRecipe.name }];
+          console.log(`    ✅ AI created: "${aiRecipe.name}"`);
+        } catch (err) {
+          console.error(`    AI recipe generation failed:`, err.message);
+        }
       }
 
       if (candidates.length === 0) continue;
@@ -472,6 +598,72 @@ Compute scale factors so the scaled totals match the targets as closely as possi
   }
 
   return optimizedItems;
+}
+
+/**
+ * AI-powered dietary compliance verification.
+ * Sends recipe names and ingredients to AI in batches and asks:
+ * "Does this recipe comply with [restrictions]?"
+ * Returns { recipeId: true/false }
+ */
+async function aiVerifyRecipeCompliance(recipes, restrictions) {
+  const result = {};
+  const restrictionStr = restrictions.join(', ');
+  
+  // Process in batches of 20 to stay within token limits
+  const batchSize = 20;
+  for (let i = 0; i < recipes.length; i += batchSize) {
+    const batch = recipes.slice(i, i + batchSize);
+    
+    const recipeList = batch.map((r, idx) => {
+      const ings = parseJSON(r.ingredients, []);
+      const ingNames = ings.map(ing => ing.name).join(', ');
+      return `${idx + 1}. "${r.name || 'Unknown'}" — Ingredients: ${ingNames || 'unknown'}`;
+    }).join('\n');
+
+    try {
+      const response = await aiService.chatCompletion([
+        {
+          role: 'system',
+          content: `You are a strict dietary compliance checker. ZERO TOLERANCE.
+
+For each recipe, determine if it complies with these dietary restrictions: ${restrictionStr}
+
+Rules:
+- Vegan: NO animal products whatsoever (no meat, fish, seafood, dairy, eggs, honey, gelatin, bone broth, animal fat, worcestershire sauce)
+- Vegetarian: NO meat, fish, or seafood of any kind (dairy and eggs are OK)
+- Pescatarian: NO meat (fish and seafood ARE allowed, dairy and eggs OK)
+- Dairy-Free: NO dairy products (milk, cheese, butter, cream, yogurt, whey)
+- Gluten-Free: NO wheat, barley, rye, regular pasta, bread, soy sauce
+
+Return ONLY a JSON array of booleans, one per recipe. true = compliant, false = violates restrictions.
+Example: [true, false, true, true]`
+        },
+        {
+          role: 'user',
+          content: `Check these ${batch.length} recipes against: ${restrictionStr}\n\n${recipeList}\n\nReturn JSON array of booleans only.`
+        }
+      ], { temperature: 0, maxTokens: 200 });
+
+      const compliance = JSON.parse(response.trim());
+      if (Array.isArray(compliance) && compliance.length === batch.length) {
+        batch.forEach((r, idx) => {
+          result[r.id] = compliance[idx];
+          if (!compliance[idx]) {
+            console.log(`    ❌ REJECTED: "${r.name}" — violates ${restrictionStr}`);
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`AI compliance check batch failed:`, err.message);
+      // On failure, fall back to keyword check for this batch
+      batch.forEach(r => {
+        result[r.id] = recipePassesRestrictions(r, restrictions);
+      });
+    }
+  }
+  
+  return result;
 }
 
 module.exports = { generateMealPlan, recipePassesRestrictions };
