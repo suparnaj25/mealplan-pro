@@ -69,7 +69,35 @@ router.get('/search', async (req, res) => {
       } catch {}
     }
 
-    // 3. Search Open Food Facts for packaged products (if fewer than 6 results)
+    // 3. AI nutrition estimation for the exact query (if AI configured)
+    if (foods.length < 4 && process.env.OPENAI_API_KEY) {
+      try {
+        const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+        const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model, temperature: 0.2, max_tokens: 200,
+            messages: [
+              { role: 'system', content: 'You are a nutrition database. Given a food description, return ONLY a JSON object: { "name": "food name with portion", "calories": number, "protein": number, "carbs": number, "fat": number }. Be accurate. No explanation.' },
+              { role: 'user', content: `Nutrition for: ${q}` }
+            ]
+          }),
+        });
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          const content = (aiData.choices?.[0]?.message?.content || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const match = content.match(/\{[\s\S]*\}/);
+          if (match) {
+            const f = JSON.parse(match[0]);
+            foods.unshift({ name: f.name || q, brand: '✨ AI Estimate', servingSize: '1 serving', image: null, calories: Math.round(f.calories || 0), protein: Math.round(f.protein || 0), carbs: Math.round(f.carbs || 0), fat: Math.round(f.fat || 0), source: 'ai' });
+          }
+        }
+      } catch (aiErr) { console.error('AI food search error:', aiErr.message); }
+    }
+
+    // 4. Search Open Food Facts for packaged products (if fewer than 6 results)
     if (foods.length < 6) {
       try {
         const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,nutriments,serving_size,image_small_url,brands`;
