@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, RefreshCw, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, SkipForward, Copy, ChefHat, MoreVertical, X, CopyPlus } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus } from 'lucide-react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
@@ -275,13 +275,13 @@ export default function MealPlan() {
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
                           </button>
                           <button onClick={() => setCopyModal({ item, selectedDays: [] })} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Repeat this meal on other days">
-                            <Copy size={14} className="text-gray-400" />
+                            <Repeat2 size={14} className="text-gray-400" />
                           </button>
                           <button onClick={() => handleRegenSlot(item.id)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Try a different recipe">
-                            <RefreshCw size={14} className="text-gray-400" />
+                            <Shuffle size={14} className="text-gray-400" />
                           </button>
                           <button onClick={() => handleSkipMeal(item.id)} className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Remove this meal">
-                            <SkipForward size={14} className="text-red-400" />
+                            <X size={14} className="text-red-400" />
                           </button>
                         </div>
                       </div>
