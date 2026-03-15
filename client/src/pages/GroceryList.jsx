@@ -94,7 +94,8 @@ export default function GroceryList() {
   const handleConnectKroger = async () => {
     try {
       const data = await api.getKrogerAuthUrl();
-      window.open(data.url, '_blank');
+      // Use location.href instead of window.open — mobile browsers block popups
+      window.location.href = data.url;
     } catch (err) { alert(err.message); }
   };
 
