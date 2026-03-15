@@ -240,57 +240,77 @@ async function autoFillCart(userId, groceryItems, preferences = {}) {
   const store = db.prepare('SELECT kroger_location_id FROM user_store_preferences WHERE user_id = ?').get(userId);
   const locationId = store?.kroger_location_id || null;
 
+  // Filter to items that need buying
+  const itemsToSearch = groceryItems.filter(item => !item.checked && !item.in_pantry);
+  
+  // Search products in parallel (3 concurrent to respect Kroger rate limits)
+  const CONCURRENCY = 3;
   const results = [];
-
-  for (const item of groceryItems) {
-    if (item.checked || item.in_pantry) continue; // Skip already checked/pantry items
-
-    const match = await findBestProduct(accessToken, item.name, locationId, preferences);
-
-    if (match) {
-      // Extract the UPC — Kroger uses items[0].itemId as the UPC for cart operations
-      const firstItem = match.product.items?.[0];
-      const upc = firstItem?.itemId || match.product.upc || match.product.productId;
-      
-      console.log(`Product match: "${item.name}" → "${match.product.description}" UPC=${upc}`);
-      
-      results.push({
-        groceryItemId: item.id,
-        groceryItemName: item.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        selectedProduct: {
-          id: match.product.productId,
-          upc: upc,
-          name: match.product.description,
-          brand: match.product.brand,
-          price: firstItem?.price?.regular,
-          size: firstItem?.size,
-          image: match.product.images?.[0]?.sizes?.find(s => s.size === 'medium')?.url || match.product.images?.[0]?.sizes?.[0]?.url,
-        },
-        alternatives: (match.alternatives || []).slice(0, 3).map(p => ({
-          id: p.productId,
-          upc: p.upc || p.items?.[0]?.itemId,
-          name: p.description,
-          brand: p.brand,
-          price: p.items?.[0]?.price?.regular,
-          size: p.items?.[0]?.size,
-          image: p.images?.[0]?.sizes?.find(s => s.size === 'medium')?.url || p.images?.[0]?.sizes?.[0]?.url,
-        })),
-        addedToCart: false,
-      });
-    } else {
-      results.push({
-        groceryItemId: item.id,
-        groceryItemName: item.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        selectedProduct: null,
-        alternatives: [],
-        addedToCart: false,
-        error: 'No products found',
-      });
-    }
+  
+  for (let i = 0; i < itemsToSearch.length; i += CONCURRENCY) {
+    const batch = itemsToSearch.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async (item) => {
+      try {
+        const match = await findBestProduct(accessToken, item.name, locationId, preferences);
+        
+        if (match) {
+          const firstItem = match.product.items?.[0];
+          const upc = firstItem?.itemId || match.product.upc || match.product.productId;
+          console.log(`Product match: "${item.name}" → "${match.product.description}" UPC=${upc}`);
+          
+          return {
+            groceryItemId: item.id,
+            groceryItemName: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            selectedProduct: {
+              id: match.product.productId,
+              upc: upc,
+              name: match.product.description,
+              brand: match.product.brand,
+              price: firstItem?.price?.regular,
+              size: firstItem?.size,
+              image: match.product.images?.[0]?.sizes?.find(s => s.size === 'medium')?.url || match.product.images?.[0]?.sizes?.[0]?.url,
+            },
+            alternatives: (match.alternatives || []).slice(0, 3).map(p => ({
+              id: p.productId,
+              upc: p.upc || p.items?.[0]?.itemId,
+              name: p.description,
+              brand: p.brand,
+              price: p.items?.[0]?.price?.regular,
+              size: p.items?.[0]?.size,
+              image: p.images?.[0]?.sizes?.find(s => s.size === 'medium')?.url || p.images?.[0]?.sizes?.[0]?.url,
+            })),
+            addedToCart: false,
+          };
+        } else {
+          return {
+            groceryItemId: item.id,
+            groceryItemName: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            selectedProduct: null,
+            alternatives: [],
+            addedToCart: false,
+            error: 'No products found',
+          };
+        }
+      } catch (err) {
+        console.error(`Kroger search error for "${item.name}":`, err.message);
+        return {
+          groceryItemId: item.id,
+          groceryItemName: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          selectedProduct: null,
+          alternatives: [],
+          addedToCart: false,
+          error: err.message,
+        };
+      }
+    }));
+    
+    results.push(...batchResults);
   }
 
   return results;
