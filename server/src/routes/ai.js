@@ -157,4 +157,125 @@ router.post('/search-terms', async (req, res) => {
   }
 });
 
+// POST /api/ai/week-insights — Week-to-date actuals + forecast
+router.post('/week-insights', async (req, res) => {
+  try {
+    const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+    
+    // Get user macros targets
+    const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id);
+    const targets = {
+      calories: macros?.calories || 2000,
+      protein: macros?.protein_g || 150,
+      carbs: macros?.carbs_g || 200,
+      fat: macros?.fat_g || 67,
+    };
+
+    // Get current week dates
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      weekDates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+    }
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const todayIdx = weekDates.indexOf(today);
+
+    // Get logged meals (actuals)
+    const logs = db.prepare('SELECT date, meal_type, calories, protein_g, carbs_g, fat_g, status FROM meal_logs WHERE user_id = ? AND date >= ? AND date <= ?')
+      .all(req.user.id, weekDates[0], weekDates[6]);
+
+    // Get meal plan (for forecast)
+    const weekStart = weekDates[0];
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
+    let planItems = [];
+    if (plan) {
+      planItems = db.prepare(`SELECT mpi.day_of_week, mpi.scale_factor, r.nutrition FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(plan.id);
+    }
+
+    // Calculate actuals (logged days)
+    const actuals = { days: 0, calories: 0, protein: 0, carbs: 0, fat: 0 };
+    const loggedDates = new Set();
+    for (const log of logs) {
+      if (log.status === 'eaten' || log.status === 'logged') {
+        loggedDates.add(log.date);
+        actuals.calories += log.calories || 0;
+        actuals.protein += log.protein_g || 0;
+        actuals.carbs += log.carbs_g || 0;
+        actuals.fat += log.fat_g || 0;
+      }
+    }
+    actuals.days = loggedDates.size;
+
+    // Calculate forecast (actuals + remaining planned)
+    const forecast = { ...actuals };
+    const remainingDays = todayIdx >= 0 ? 6 - todayIdx : 0;
+    for (const item of planItems) {
+      if (item.day_of_week > todayIdx) {
+        const n = parseJSON(item.nutrition, {});
+        const sf = item.scale_factor || 1.0;
+        forecast.calories += Math.round((n.calories || 0) * sf);
+        forecast.protein += Math.round((n.protein || 0) * sf);
+        forecast.carbs += Math.round((n.carbs || 0) * sf);
+        forecast.fat += Math.round((n.fat || 0) * sf);
+      }
+    }
+    forecast.days = actuals.days + remainingDays;
+
+    // Use AI to analyze
+    const response = await ai.chatCompletion([
+      {
+        role: 'system',
+        content: `Analyze nutrition data and return JSON:
+{
+  "actualsGrade": "A|B|C|D",
+  "actualsSummary": "Brief assessment of week-to-date",
+  "forecastGrade": "A|B|C|D",
+  "forecastSummary": "Brief forecast assessment",
+  "tips": ["tip1", "tip2"],
+  "encouragement": "Motivational message"
+}
+Grade based on proximity to daily targets: A=within 10%, B=20%, C=35%, D=>35%`
+      },
+      {
+        role: 'user',
+        content: `Daily targets: ${JSON.stringify(targets)}
+Week-to-date actuals (${actuals.days} days logged): avg ${actuals.days > 0 ? Math.round(actuals.calories/actuals.days) : 0} cal, ${actuals.days > 0 ? Math.round(actuals.protein/actuals.days) : 0}g P, ${actuals.days > 0 ? Math.round(actuals.carbs/actuals.days) : 0}g C, ${actuals.days > 0 ? Math.round(actuals.fat/actuals.days) : 0}g F
+Forecast (${forecast.days} days, logged + planned): avg ${forecast.days > 0 ? Math.round(forecast.calories/forecast.days) : 0} cal, ${forecast.days > 0 ? Math.round(forecast.protein/forecast.days) : 0}g P, ${forecast.days > 0 ? Math.round(forecast.carbs/forecast.days) : 0}g C, ${forecast.days > 0 ? Math.round(forecast.fat/forecast.days) : 0}g F`
+      }
+    ], { jsonMode: true, temperature: 0.3, maxTokens: 500 });
+
+    const aiAnalysis = JSON.parse(response);
+
+    res.json({
+      targets,
+      actuals: {
+        ...actuals,
+        avgCalories: actuals.days > 0 ? Math.round(actuals.calories / actuals.days) : 0,
+        avgProtein: actuals.days > 0 ? Math.round(actuals.protein / actuals.days) : 0,
+        avgCarbs: actuals.days > 0 ? Math.round(actuals.carbs / actuals.days) : 0,
+        avgFat: actuals.days > 0 ? Math.round(actuals.fat / actuals.days) : 0,
+      },
+      forecast: {
+        ...forecast,
+        avgCalories: forecast.days > 0 ? Math.round(forecast.calories / forecast.days) : 0,
+        avgProtein: forecast.days > 0 ? Math.round(forecast.protein / forecast.days) : 0,
+        avgCarbs: forecast.days > 0 ? Math.round(forecast.carbs / forecast.days) : 0,
+        avgFat: forecast.days > 0 ? Math.round(forecast.fat / forecast.days) : 0,
+      },
+      ai: aiAnalysis,
+      weekDates,
+      today,
+    });
+  } catch (error) {
+    console.error('Week insights error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
