@@ -313,36 +313,72 @@ async function generateMealPlan(preferences) {
     try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
   }
 
-  // Pre-load all recipes — keyword filter first (fast), then AI verify only the candidates that pass
+  // Pre-load all recipes — AI-ONLY compliance (no keyword dependency)
   const recipeCache = {};
+  const restrictionKey = restrictions.sort().join(','); // Cache key for this set of restrictions
+  
   for (const mt of mealTypes) {
-    let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name FROM recipes WHERE meal_type = ?').all(mt);
+    let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name, dietary_compliance FROM recipes WHERE meal_type = ?').all(mt);
     
-    // Step 1: Fast keyword filter (catches 95% of violations)
     if (restrictions.length > 0) {
-      const beforeKw = recipes.length;
-      recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
-      console.log(`  ${mt}: ${beforeKw} → ${recipes.length} after keyword filter`);
-    }
-    
-    // Step 2: AI verification on remaining candidates (catches the rest)
-    // Only check recipes that passed keyword filter — much faster
-    if (restrictions.length > 0 && recipes.length > 0 && aiService && aiService.isConfigured()) {
-      try {
-        const verified = await aiVerifyRecipeCompliance(recipes, restrictions);
-        const beforeAI = recipes.length;
-        
-        // Purge non-compliant from DB
-        const purged = Object.entries(verified).filter(([id, ok]) => !ok);
-        for (const [id] of purged) {
-          try { db.prepare('DELETE FROM recipes WHERE id = ? AND source != ?').run(id, 'builtin'); } catch {}
+      const beforeCount = recipes.length;
+      
+      // Step 1: Check cached compliance results first
+      const unchecked = [];
+      const compliant = [];
+      const rejected = [];
+      
+      for (const r of recipes) {
+        const cached = parseJSON(r.dietary_compliance, null);
+        if (cached && cached[restrictionKey] !== undefined) {
+          if (cached[restrictionKey]) compliant.push(r);
+          else rejected.push(r);
+        } else {
+          unchecked.push(r);
         }
-        
-        recipes = recipes.filter(r => verified[r.id] !== false);
-        console.log(`  ${mt}: ${beforeAI} → ${recipes.length} after AI verification (purged ${purged.length})`);
-      } catch (err) {
-        console.error(`AI dietary check failed for ${mt}:`, err.message);
       }
+      
+      console.log(`  ${mt}: ${beforeCount} total, ${compliant.length} cached-compliant, ${rejected.length} cached-rejected, ${unchecked.length} unchecked`);
+      
+      // Step 2: AI verify unchecked recipes (the ones without cached results)
+      if (unchecked.length > 0 && aiService && aiService.isConfigured()) {
+        try {
+          const verified = await aiVerifyRecipeCompliance(unchecked, restrictions);
+          
+          for (const r of unchecked) {
+            const isCompliant = verified[r.id] !== false;
+            
+            // Cache the result in DB
+            const existingCache = parseJSON(r.dietary_compliance, {});
+            existingCache[restrictionKey] = isCompliant;
+            try { db.prepare('UPDATE recipes SET dietary_compliance = ? WHERE id = ?').run(JSON.stringify(existingCache), r.id); } catch {}
+            
+            if (isCompliant) {
+              compliant.push(r);
+            } else {
+              console.log(`    ❌ AI REJECTED: "${r.name}"`);
+              // Delete non-builtin non-compliant recipes
+              if (r.source && r.source !== 'builtin') {
+                try { db.prepare('DELETE FROM recipes WHERE id = ?').run(r.id); } catch {}
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`AI dietary check failed for ${mt}:`, err.message);
+          // On AI failure, fall back to keyword filter for unchecked only
+          for (const r of unchecked) {
+            if (recipePassesRestrictions(r, restrictions)) compliant.push(r);
+          }
+        }
+      } else if (unchecked.length > 0) {
+        // No AI available — fall back to keyword filter
+        for (const r of unchecked) {
+          if (recipePassesRestrictions(r, restrictions)) compliant.push(r);
+        }
+      }
+      
+      recipes = compliant;
+      console.log(`  ${mt}: ${beforeCount} → ${recipes.length} after AI compliance check`);
     }
     
     recipeCache[mt] = recipes;
