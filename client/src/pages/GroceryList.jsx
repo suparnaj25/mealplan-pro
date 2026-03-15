@@ -231,15 +231,19 @@ export default function GroceryList() {
             <h3 className="text-lg font-bold">
               {cartSuccess.count} of {cartSuccess.total} items added to your {storeName} cart!
             </h3>
-            <p className="text-sm text-gray-500">Log in to {storeName} with your Kroger account to see your cart.</p>
-            <div className="flex justify-center gap-3">
-              <a href={cartUrl} target="_blank" rel="noopener noreferrer"
+            <p className="text-sm text-gray-500">Items have been added to your Kroger account cart.</p>
+            <div className="flex flex-col items-center gap-2">
+              <a href="https://www.kroger.com/cart" target="_blank" rel="noopener noreferrer"
                 className="btn-primary inline-flex items-center gap-2">
-                <ShoppingCart size={18} /> Go to {storeName} Cart →
+                <ShoppingCart size={18} /> View Cart on Kroger.com →
               </a>
+              {currentStore !== 'kroger' && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg">
+                  ⚠️ The Kroger API adds items to kroger.com cart. To shop at {storeName}, use the individual "Buy" links next to each item in your grocery list below.
+                </p>
+              )}
               <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
             </div>
-            <p className="text-xs text-gray-400">💡 Use the same login you used to connect (your Kroger account works at {storeName})</p>
           </motion.div>
         );
       })()}
