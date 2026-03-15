@@ -231,7 +231,7 @@ export default function GroceryList() {
             <h3 className="text-lg font-bold">
               {cartSuccess.count} of {cartSuccess.total} items added to your {storeName} cart!
             </h3>
-            <p className="text-sm text-gray-500">Your cart is ready. Go to {storeName} to review and checkout.</p>
+            <p className="text-sm text-gray-500">Log in to {storeName} with your Kroger account to see your cart.</p>
             <div className="flex justify-center gap-3">
               <a href={cartUrl} target="_blank" rel="noopener noreferrer"
                 className="btn-primary inline-flex items-center gap-2">
@@ -239,6 +239,7 @@ export default function GroceryList() {
               </a>
               <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
             </div>
+            <p className="text-xs text-gray-400">💡 Use the same login you used to connect (your Kroger account works at {storeName})</p>
           </motion.div>
         );
       })()}
@@ -282,24 +283,29 @@ export default function GroceryList() {
       {autoFillResults && (
         <div className="space-y-4">
           {/* Sticky top CTA — the main action button */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="glass-card p-4 border-2 border-brand-500 bg-brand-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  🛒 {autoFillResults.filter(r => r.selectedProduct).length} items ready
-                </h3>
-                <p className="text-xs text-gray-500">Review below, then add all to your Kroger cart</p>
+          {(() => {
+            const sn = STORES.find(s => s.id === currentStore)?.name || 'Kroger';
+            return (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="glass-card p-4 border-2 border-brand-500 bg-brand-500/5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base flex items-center gap-2">
+                    🛒 {autoFillResults.filter(r => r.selectedProduct).length} items ready
+                  </h3>
+                  <p className="text-xs text-gray-500">Review below, then add all to your {sn} cart</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setAutoFillResults(null)} className="btn-secondary text-sm">Cancel</button>
+                  <button onClick={handleConfirmCart} disabled={confirming} className="btn-primary flex items-center gap-2 animate-pulse">
+                    {confirming ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShoppingCart size={18} />}
+                    {confirming ? 'Adding...' : `Add All to ${sn} Cart`}
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setAutoFillResults(null)} className="btn-secondary text-sm">Cancel</button>
-                <button onClick={handleConfirmCart} disabled={confirming} className="btn-primary flex items-center gap-2 animate-pulse">
-                  {confirming ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShoppingCart size={18} />}
-                  {confirming ? 'Adding...' : 'Add All to Kroger Cart'}
-                </button>
-              </div>
-            </div>
-          </motion.div>
+            </motion.div>
+            );
+          })()}
 
           {/* Item review list with expandable alternatives */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card overflow-hidden">
