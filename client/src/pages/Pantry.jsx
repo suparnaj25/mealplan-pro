@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Plus, Trash2, Edit3, X, AlertTriangle } from 'lucide-react';
+import { Package, Plus, Trash2, Edit3, X, AlertTriangle, ChefHat, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 
 const CATEGORIES = ['Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery & Bread', 'Grains & Pasta', 'Canned & Jarred', 'Frozen', 'Oils & Condiments', 'Spices & Seasonings', 'Nuts & Seeds', 'Snacks', 'Beverages', 'Other'];
@@ -75,6 +75,18 @@ export default function Pantry() {
     return d < new Date();
   };
 
+  const [whatCanIMake, setWhatCanIMake] = useState(null);
+  const [whatCanIMakeLoading, setWhatCanIMakeLoading] = useState(false);
+
+  const handleWhatCanIMake = async () => {
+    setWhatCanIMakeLoading(true);
+    try {
+      const data = await api.aiWhatCanIMake();
+      setWhatCanIMake(data);
+    } catch (err) { console.error(err); }
+    finally { setWhatCanIMakeLoading(false); }
+  };
+
   const categories = [...new Set(items.map((i) => i.category || 'Other'))].sort();
 
   if (loading) {
@@ -96,10 +108,44 @@ export default function Pantry() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">{items.length} items in your pantry</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2 text-sm">
-          <Plus size={16} /> Add Item
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleWhatCanIMake} disabled={whatCanIMakeLoading || items.length === 0} className="btn-secondary flex items-center gap-2 text-sm">
+            {whatCanIMakeLoading ? <Loader2 size={16} className="animate-spin" /> : <ChefHat size={16} />}
+            What can I make?
+          </button>
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2 text-sm">
+            <Plus size={16} /> Add Item
+          </button>
+        </div>
       </div>
+
+      {/* What Can I Make Results */}
+      {whatCanIMake && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-sm flex items-center gap-2">🍳 Recipes you can make now</h3>
+            <button onClick={() => setWhatCanIMake(null)} className="btn-ghost p-1 text-gray-400"><X size={16} /></button>
+          </div>
+          {whatCanIMake.quickMealIdea && (
+            <div className="glass-card p-4 bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-200 dark:border-emerald-800">
+              <p className="text-xs font-semibold text-emerald-600 mb-1">💡 Quick idea</p>
+              <p className="text-sm">{whatCanIMake.quickMealIdea}</p>
+            </div>
+          )}
+          {whatCanIMake.suggestions?.map((s, i) => (
+            <div key={i} className="glass-card p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-medium text-sm">{s.recipeName}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.canMakeNow ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-amber-100 text-amber-700'}`}>
+                  {s.canMakeNow ? '✅ Ready' : `Missing ${s.missingItems?.length}`}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">{s.matchPercentage}% match · {s.difficulty}</p>
+              {s.tip && <p className="text-xs text-gray-400 mt-1 italic">💡 {s.tip}</p>}
+            </div>
+          ))}
+        </motion.div>
+      )}
 
       {/* Add/Edit Form */}
       <AnimatePresence>
