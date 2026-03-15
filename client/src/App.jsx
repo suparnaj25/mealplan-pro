@@ -10,7 +10,8 @@ import Pantry from './pages/Pantry';
 import Settings from './pages/Settings';
 import MyRecipes from './pages/MyRecipes';
 import RecipeDetail from './pages/RecipeDetail';
-import AiAssistant from './pages/AiAssistant';
+import AiChef from './pages/AiChef';
+import Insights from './pages/Insights';
 import DailyTracker from './pages/DailyTracker';
 
 function ProtectedRoute({ children }) {
@@ -76,7 +77,9 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="recipe/:id" element={<RecipeDetail />} />
         <Route path="tracker" element={<DailyTracker />} />
-        <Route path="ai" element={<AiAssistant />} />
+        <Route path="ai-chef" element={<AiChef />} />
+        <Route path="insights" element={<Insights />} />
+        <Route path="ai" element={<AiChef />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
