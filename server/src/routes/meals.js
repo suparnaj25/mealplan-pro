@@ -92,6 +92,33 @@ router.put('/plan/:planId/items/:itemId', (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// POST /api/meals/copy — copy a meal to other days
+router.post('/copy', (req, res) => {
+  try {
+    const { planId, recipeId, dayOfWeek, mealType } = req.body;
+    if (!planId || !recipeId) return res.status(400).json({ error: 'planId and recipeId required' });
+    
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    // Check if same recipe already exists for this day/meal
+    const existing = db.prepare('SELECT id FROM meal_plan_items WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ?')
+      .get(planId, dayOfWeek, mealType);
+    
+    if (existing) {
+      // Update existing slot
+      db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(recipeId, existing.id);
+    } else {
+      // Insert new
+      const { v4: uuidv4 } = require('uuid');
+      db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(uuidv4(), planId, dayOfWeek, mealType, recipeId, 1);
+    }
+
+    res.json({ success: true });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 router.post('/regenerate-slot', (req, res) => {
   try {
     const { planId, itemId } = req.body;
