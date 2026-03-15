@@ -237,6 +237,9 @@ class ApiService {
   aiSearchTerms(mealType) {
     return this.request('/ai/search-terms', { method: 'POST', body: JSON.stringify({ mealType }) });
   }
+  aiWeekInsights() {
+    return this.request('/ai/week-insights', { method: 'POST' });
+  }
 }
 
 export const api = new ApiService();
