@@ -32,6 +32,8 @@ const STORES = [
   { id: 'safeway', name: 'Safeway', icon: '🛍️', tier: 'deep_link' },
   { id: 'trader_joes', name: "Trader Joe's", icon: '🌺', tier: 'list_export' },
   { id: 'heb', name: 'H-E-B', icon: '🔴', tier: 'deep_link' },
+  { id: 'fred_meyer', name: 'Fred Meyer', icon: '🟡', tier: 'full_cart' },
+  { id: 'qfc', name: 'QFC', icon: '🟢', tier: 'full_cart' },
 ];
 const MACRO_PRESETS = {
   balanced: { calories: 2000, proteinG: 150, carbsG: 200, fatG: 67 },
