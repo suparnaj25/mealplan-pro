@@ -83,7 +83,7 @@ export default function GroceryList() {
     try {
       const selections = autoFillResults
         .filter(r => r.selectedProduct?.upc)
-        .map(r => ({ upc: r.selectedProduct.upc, quantity: Math.max(1, Math.ceil(r.quantity || 1)) }));
+        .map(r => ({ upc: r.selectedProduct.upc, quantity: 1 }));
       const data = await api.krogerConfirmCart(selections);
       setAutoFillResults(null);
       setCartSuccess({ count: data.successCount, total: data.totalCount });
