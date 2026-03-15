@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, TrendingUp, Target } from 'lucide-react';
+import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame } from 'lucide-react';
 import { api } from '../services/api';
 
 function MacroBar({ label, actual, target, color }) {
@@ -28,8 +28,13 @@ export default function Insights() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [streaks, setStreaks] = useState(null);
 
-  useEffect(() => { loadInsights(); }, []);
+  useEffect(() => { loadInsights(); loadStreaks(); }, []);
+
+  const loadStreaks = async () => {
+    try { const s = await api.getStreaks(); setStreaks(s); } catch {}
+  };
 
   const loadInsights = async () => {
     setLoading(true); setError(null);
@@ -128,6 +133,61 @@ export default function Insights() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="glass-card p-5 bg-gradient-to-r from-brand-500/10 to-purple-500/10 border border-brand-200 dark:border-brand-800 text-center">
           <p className="text-sm font-medium">{ai.encouragement}</p>
+        </motion.div>
+      )}
+
+      {/* Streaks & Achievements */}
+      {streaks && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Trophy size={18} className="text-amber-500" />
+            <h2 className="font-bold text-base">Streaks & Achievements</h2>
+          </div>
+          
+          {/* Current streak */}
+          <div className="flex items-center gap-4 mb-4 p-3 bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl">
+            <div className="text-4xl">🔥</div>
+            <div>
+              <div className="text-2xl font-bold text-orange-500">{streaks.currentStreak || 0} day{(streaks.currentStreak || 0) !== 1 ? 's' : ''}</div>
+              <p className="text-xs text-gray-500">Current logging streak</p>
+            </div>
+            {streaks.longestStreak > 0 && (
+              <div className="ml-auto text-right">
+                <div className="text-lg font-bold text-amber-500">{streaks.longestStreak}</div>
+                <p className="text-xs text-gray-500">Best streak</p>
+              </div>
+            )}
+          </div>
+
+          {/* Achievements */}
+          {streaks.achievements?.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {streaks.achievements.map((a, i) => (
+                <div key={i} className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-all ${a.earned ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 border border-transparent'}`}>
+                  <span>{a.icon || '🏅'}</span>
+                  <span>{a.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Stats */}
+          {(streaks.totalDaysLogged > 0 || streaks.totalMealsLogged > 0) && (
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <div className="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <div className="text-lg font-bold text-brand-500">{streaks.totalDaysLogged || 0}</div>
+                <p className="text-xs text-gray-500">Days logged</p>
+              </div>
+              <div className="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <div className="text-lg font-bold text-brand-500">{streaks.totalMealsLogged || 0}</div>
+                <p className="text-xs text-gray-500">Meals tracked</p>
+              </div>
+              <div className="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <div className="text-lg font-bold text-brand-500">{streaks.weeklyGoalMet || 0}</div>
+                <p className="text-xs text-gray-500">Weeks on target</p>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
     </div>
