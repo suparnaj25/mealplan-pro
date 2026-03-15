@@ -221,48 +221,52 @@ export default function GroceryList() {
       </div>
 
       {/* Kroger Cart Success — Go to Kroger */}
-      {cartSuccess && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 text-center space-y-4">
-          <div className="text-4xl">🎉</div>
-          <h3 className="text-lg font-bold">
-            {cartSuccess.count} of {cartSuccess.total} items added to your Kroger cart!
-          </h3>
-          <p className="text-sm text-gray-500">Your cart is ready. Go to Kroger to review and checkout.</p>
-          <div className="flex justify-center gap-3">
-            <a href="https://www.kroger.com/cart" target="_blank" rel="noopener noreferrer"
-              className="btn-primary inline-flex items-center gap-2">
-              <ShoppingCart size={18} /> Go to Kroger Cart →
-            </a>
-            <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
-          </div>
-          <p className="text-xs text-gray-400">
-            Or open the <a href="https://www.kroger.com" target="_blank" rel="noopener noreferrer" className="text-brand-500 underline">Kroger website</a> or Kroger app on your phone
-          </p>
-        </motion.div>
-      )}
+      {cartSuccess && (() => {
+        const storeName = STORES.find(s => s.id === currentStore)?.name || 'Kroger';
+        const cartUrls = { kroger: 'https://www.kroger.com/cart', fred_meyer: 'https://www.fredmeyer.com/cart', qfc: 'https://www.qfc.com/cart' };
+        const cartUrl = cartUrls[currentStore] || cartUrls.kroger;
+        return (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 text-center space-y-4">
+            <div className="text-4xl">🎉</div>
+            <h3 className="text-lg font-bold">
+              {cartSuccess.count} of {cartSuccess.total} items added to your {storeName} cart!
+            </h3>
+            <p className="text-sm text-gray-500">Your cart is ready. Go to {storeName} to review and checkout.</p>
+            <div className="flex justify-center gap-3">
+              <a href={cartUrl} target="_blank" rel="noopener noreferrer"
+                className="btn-primary inline-flex items-center gap-2">
+                <ShoppingCart size={18} /> Go to {storeName} Cart →
+              </a>
+              <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
+            </div>
+          </motion.div>
+        );
+      })()}
 
       {/* Kroger/Fred Meyer/QFC Cart Section (all use Kroger API) */}
-      {['kroger', 'fred_meyer', 'qfc'].includes(currentStore) && !autoFillResults && (
+      {['kroger', 'fred_meyer', 'qfc'].includes(currentStore) && !autoFillResults && (() => {
+        const storeName = STORES.find(s => s.id === currentStore)?.name || 'Kroger';
+        return (
         <div className="glass-card p-4">
           {krogerStatus?.connected ? (
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium flex items-center gap-2">🏪 Kroger Connected {krogerStatus.locationId && <span className="text-xs text-gray-400">(Store #{krogerStatus.locationId})</span>}</p>
-                <p className="text-xs text-gray-500">Auto-select best products and add to your Kroger cart</p>
+                <p className="text-sm font-medium flex items-center gap-2">🏪 {storeName} Connected {krogerStatus.locationId && <span className="text-xs text-gray-400">(Store #{krogerStatus.locationId})</span>}</p>
+                <p className="text-xs text-gray-500">Auto-select best products and add to your {storeName} cart</p>
               </div>
               <button onClick={handleAutoFill} disabled={autoFilling} className="btn-primary flex items-center gap-2 text-sm">
                 {autoFilling ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Zap size={16} />}
-                {autoFilling ? 'Finding products...' : 'Auto-fill Kroger Cart'}
+                {autoFilling ? 'Finding...' : `Auto-fill ${storeName} Cart`}
               </button>
             </div>
           ) : krogerStatus?.configured ? (
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">🔗 Connect Your Kroger Account</p>
-                <p className="text-xs text-gray-500">One-time login to enable auto-cart</p>
+                <p className="text-sm font-medium">🔗 Connect Your {storeName} Account</p>
+                <p className="text-xs text-gray-500">One-time Kroger login (works for all Kroger stores)</p>
               </div>
               <button onClick={handleConnectKroger} className="btn-primary flex items-center gap-2 text-sm">
-                Connect Kroger <ArrowRight size={16} />
+                Connect {storeName} <ArrowRight size={16} />
               </button>
             </div>
           ) : (
@@ -271,7 +275,8 @@ export default function GroceryList() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Kroger Auto-Fill Results — PROMINENT Add to Cart button at top */}
       {autoFillResults && (
