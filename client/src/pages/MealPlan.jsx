@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { CalendarDays, RefreshCw, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, SkipForward } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CalendarDays, RefreshCw, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, SkipForward, Copy, ChefHat, MoreVertical, X, CopyPlus } from 'lucide-react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
@@ -66,6 +66,45 @@ export default function MealPlan() {
       console.error(err);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // Modal states
+  const [copyModal, setCopyModal] = useState(null); // { item, selectedDays: [] }
+  const [mealMenu, setMealMenu] = useState(null); // item id for context menu
+
+  const handleCopyMeal = async (item, targetDays) => {
+    if (!plan || targetDays.length === 0) return;
+    try {
+      for (const dayIdx of targetDays) {
+        await api.copyMeal(plan.id, item.recipe_id, dayIdx, item.meal_type);
+      }
+      await loadPlan();
+      setCopyModal(null);
+    } catch (err) {
+      console.error(err);
+      await loadPlan();
+      setCopyModal(null);
+    }
+  };
+
+  const handleClonePreviousWeek = async () => {
+    const prevWeekStart = new Date(weekStart + 'T12:00:00');
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const prevWS = `${prevWeekStart.getFullYear()}-${String(prevWeekStart.getMonth() + 1).padStart(2, '0')}-${String(prevWeekStart.getDate()).padStart(2, '0')}`;
+    
+    try {
+      const prevData = await api.getMealPlan(prevWS);
+      if (!prevData.plan || !prevData.items?.length) {
+        alert('No meal plan found for the previous week.');
+        return;
+      }
+      // Generate current week first (to create plan), then copy items
+      const data = await api.generateMealPlan(weekStart);
+      setPlan(data.plan);
+      setItems(data.items || []);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -235,6 +274,9 @@ export default function MealPlan() {
                           <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock' : 'Lock'}>
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
                           </button>
+                          <button onClick={() => setCopyModal({ item, selectedDays: [] })} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Copy to other days">
+                            <Copy size={14} className="text-gray-400" />
+                          </button>
                           <button onClick={() => handleRegenSlot(item.id)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Swap meal">
                             <RefreshCw size={14} className="text-gray-400" />
                           </button>
@@ -279,6 +321,77 @@ export default function MealPlan() {
           </div>
         </div>
       )}
+      {/* Copy Meal Modal */}
+      <AnimatePresence>
+        {copyModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={() => setCopyModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">Copy Meal</h3>
+                <button onClick={() => setCopyModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                  <X size={18} />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-1">"{copyModal.item.recipe_name}"</p>
+              <p className="text-xs text-gray-400 mb-4">Select days to copy this {copyModal.item.meal_type} to:</p>
+              <div className="grid grid-cols-7 gap-2 mb-4">
+                {DAYS.map((day, idx) => {
+                  const isCurrentDay = copyModal.item.day_of_week === idx;
+                  const isSelected = copyModal.selectedDays.includes(idx);
+                  return (
+                    <button
+                      key={idx}
+                      disabled={isCurrentDay}
+                      onClick={() => {
+                        setCopyModal(prev => ({
+                          ...prev,
+                          selectedDays: isSelected
+                            ? prev.selectedDays.filter(d => d !== idx)
+                            : [...prev.selectedDays, idx]
+                        }));
+                      }}
+                      className={`py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isCurrentDay ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed' :
+                        isSelected ? 'bg-brand-500 text-white shadow-lg' :
+                        'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCopyModal(prev => ({ ...prev, selectedDays: DAYS.map((_, i) => i).filter(i => i !== copyModal.item.day_of_week) }))}
+                  className="btn-secondary text-xs flex-1"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleCopyMeal(copyModal.item, copyModal.selectedDays)}
+                  disabled={copyModal.selectedDays.length === 0}
+                  className="btn-primary text-xs flex-1 flex items-center justify-center gap-1"
+                >
+                  <CopyPlus size={14} /> Copy to {copyModal.selectedDays.length} day{copyModal.selectedDays.length !== 1 ? 's' : ''}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

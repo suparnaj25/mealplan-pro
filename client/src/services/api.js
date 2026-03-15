@@ -88,6 +88,9 @@ class ApiService {
   skipMeal(planId, itemId) {
     return this.request('/meals/skip', { method: 'POST', body: JSON.stringify({ planId, itemId }) });
   }
+  copyMeal(planId, recipeId, dayOfWeek, mealType) {
+    return this.request('/meals/copy', { method: 'POST', body: JSON.stringify({ planId, recipeId, dayOfWeek, mealType }) });
+  }
 
   // Pantry
   getPantry() {
