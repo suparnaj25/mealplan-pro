@@ -7,11 +7,11 @@ import {
 import { api } from '../services/api';
 
 const FEATURES = [
-  { id: 'chat', icon: MessageCircle, title: 'Meal Chat', desc: 'Ask anything about meals & nutrition', color: 'from-brand-400 to-brand-600' },
-  { id: 'optimize', icon: Brain, title: 'Optimize Plan', desc: 'AI-powered meal plan analysis', color: 'from-violet-400 to-purple-600' },
-  { id: 'pantry', icon: ChefHat, title: 'What Can I Make?', desc: 'Recipes from your pantry', color: 'from-emerald-400 to-green-600' },
-  { id: 'budget', icon: DollarSign, title: 'Budget Estimate', desc: 'Weekly grocery cost analysis', color: 'from-amber-400 to-orange-600' },
-  { id: 'nutrition', icon: BarChart3, title: 'Nutrition Report', desc: 'Weekly health insights', color: 'from-blue-400 to-indigo-600' },
+  { id: 'chat', icon: MessageCircle, title: '💬 Ask me anything', desc: 'Get meal ideas, nutrition advice, or cooking tips', color: 'from-brand-400 to-brand-600' },
+  { id: 'optimize', icon: Brain, title: '📊 Rate my meal plan', desc: 'See how well your plan matches your goals', color: 'from-violet-400 to-purple-600' },
+  { id: 'pantry', icon: ChefHat, title: '🍳 What can I make?', desc: 'Find recipes using what you already have', color: 'from-emerald-400 to-green-600' },
+  { id: 'budget', icon: DollarSign, title: '💰 How much will this cost?', desc: 'Estimate your weekly grocery spend', color: 'from-amber-400 to-orange-600' },
+  { id: 'nutrition', icon: BarChart3, title: '📋 Weekly health check', desc: 'Grade your nutrition against your targets', color: 'from-blue-400 to-indigo-600' },
 ];
 
 export default function AiAssistant() {

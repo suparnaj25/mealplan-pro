@@ -271,16 +271,16 @@ export default function MealPlan() {
                       <div className="flex items-center justify-between mb-1">
                         <div />
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock' : 'Lock'}>
+                          <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock — allow changes when regenerating' : 'Keep — protect this meal when regenerating'}>
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
                           </button>
-                          <button onClick={() => setCopyModal({ item, selectedDays: [] })} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Copy to other days">
+                          <button onClick={() => setCopyModal({ item, selectedDays: [] })} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Repeat this meal on other days">
                             <Copy size={14} className="text-gray-400" />
                           </button>
-                          <button onClick={() => handleRegenSlot(item.id)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Swap meal">
+                          <button onClick={() => handleRegenSlot(item.id)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Try a different recipe">
                             <RefreshCw size={14} className="text-gray-400" />
                           </button>
-                          <button onClick={() => handleSkipMeal(item.id)} className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Skip this meal">
+                          <button onClick={() => handleSkipMeal(item.id)} className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Remove this meal">
                             <SkipForward size={14} className="text-red-400" />
                           </button>
                         </div>
@@ -299,8 +299,8 @@ export default function MealPlan() {
                           <Clock size={12} /> {item.prep_time_minutes + (item.cook_time_minutes || 0)} min
                         </div>
                       )}
-                      <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        View Recipe →
+                      <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        See recipe details →
                       </div>
                       </div>
                     </div>
@@ -339,13 +339,13 @@ export default function MealPlan() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-lg">Copy Meal</h3>
+                <h3 className="font-bold text-lg">🔁 Repeat Meal</h3>
                 <button onClick={() => setCopyModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
                   <X size={18} />
                 </button>
               </div>
               <p className="text-sm text-gray-500 mb-1">"{copyModal.item.recipe_name}"</p>
-              <p className="text-xs text-gray-400 mb-4">Select days to copy this {copyModal.item.meal_type} to:</p>
+              <p className="text-xs text-gray-400 mb-4">Select which days you'd like to have this {copyModal.item.meal_type} again:</p>
               <div className="grid grid-cols-7 gap-2 mb-4">
                 {DAYS.map((day, idx) => {
                   const isCurrentDay = copyModal.item.day_of_week === idx;
