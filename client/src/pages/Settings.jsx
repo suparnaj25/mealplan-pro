@@ -26,6 +26,8 @@ const STORES = [
   { id: 'safeway', name: 'Safeway', icon: '🛍️' },
   { id: 'trader_joes', name: "Trader Joe's", icon: '🌺' },
   { id: 'heb', name: 'H-E-B', icon: '🔴' },
+  { id: 'fred_meyer', name: 'Fred Meyer', icon: '🟡' },
+  { id: 'qfc', name: 'QFC', icon: '🟢' },
 ];
 
 function Section({ icon: Icon, title, children, defaultOpen = false }) {

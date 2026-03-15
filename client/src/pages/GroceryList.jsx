@@ -13,6 +13,8 @@ const STORES = [
   { id: 'safeway', name: 'Safeway', icon: '🛍️', url: (q) => `https://www.safeway.com/shop/search-results.html?q=${encodeURIComponent(q)}` },
   { id: 'trader_joes', name: "Trader Joe's", icon: '🌺', url: (q) => `https://www.traderjoes.com/home/search?q=${encodeURIComponent(q)}&section=products` },
   { id: 'heb', name: 'H-E-B', icon: '🔴', url: (q) => `https://www.heb.com/search/?q=${encodeURIComponent(q)}` },
+  { id: 'fred_meyer', name: 'Fred Meyer', icon: '🟡', url: (q) => `https://www.fredmeyer.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
+  { id: 'qfc', name: 'QFC', icon: '🟢', url: (q) => `https://www.qfc.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
 ];
 
 function getStoreLink(storeId, itemName, organicPref) {
@@ -239,8 +241,8 @@ export default function GroceryList() {
         </motion.div>
       )}
 
-      {/* Kroger Section (only when Kroger is selected) */}
-      {currentStore === 'kroger' && !autoFillResults && (
+      {/* Kroger/Fred Meyer/QFC Cart Section (all use Kroger API) */}
+      {['kroger', 'fred_meyer', 'qfc'].includes(currentStore) && !autoFillResults && (
         <div className="glass-card p-4">
           {krogerStatus?.connected ? (
             <div className="flex items-center justify-between">

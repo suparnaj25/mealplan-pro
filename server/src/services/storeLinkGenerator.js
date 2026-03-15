@@ -67,6 +67,20 @@ const STORE_CONFIGS = {
     color: '#EE1921',
     tier: 'deep_link',
   },
+  fred_meyer: {
+    name: 'Fred Meyer',
+    icon: '🟡',
+    searchUrl: (query) => `https://www.fredmeyer.com/search?query=${encodeURIComponent(query)}&searchType=default_search`,
+    color: '#E35205',
+    tier: 'full_cart',
+  },
+  qfc: {
+    name: 'QFC',
+    icon: '🟢',
+    searchUrl: (query) => `https://www.qfc.com/search?query=${encodeURIComponent(query)}&searchType=default_search`,
+    color: '#00833E',
+    tier: 'full_cart',
+  },
 };
 
 /**
