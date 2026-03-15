@@ -223,21 +223,23 @@ export default function GroceryList() {
       {/* Kroger Cart Success — Go to Kroger */}
       {cartSuccess && (() => {
         const storeName = STORES.find(s => s.id === currentStore)?.name || 'Kroger';
+        const cartUrls = { kroger: 'https://www.kroger.com/cart', fred_meyer: 'https://www.fredmeyer.com/cart', qfc: 'https://www.qfc.com/cart' };
+        const cartUrl = cartUrls[currentStore] || cartUrls.kroger;
         return (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 text-center space-y-4">
             <div className="text-4xl">🎉</div>
             <h3 className="text-lg font-bold">
-              {cartSuccess.count} of {cartSuccess.total} items added to your cart!
+              {cartSuccess.count} of {cartSuccess.total} items added to your {storeName} cart!
             </h3>
-            <p className="text-sm text-gray-500">Items are in your Kroger cart (shared across {storeName}, Kroger, and all Kroger-family stores).</p>
+            <p className="text-sm text-gray-500">Log in to {storeName} with your Kroger account to see your cart.</p>
             <div className="flex justify-center gap-3">
-              <a href="https://www.kroger.com/cart" target="_blank" rel="noopener noreferrer"
+              <a href={cartUrl} target="_blank" rel="noopener noreferrer"
                 className="btn-primary inline-flex items-center gap-2">
-                <ShoppingCart size={18} /> View Cart on Kroger.com →
+                <ShoppingCart size={18} /> Go to {storeName} Cart →
               </a>
               <button onClick={() => setCartSuccess(null)} className="btn-secondary text-sm">Dismiss</button>
             </div>
-            <p className="text-xs text-gray-400">Cart syncs across all Kroger-family store apps ({storeName}, Kroger, QFC, Fred Meyer)</p>
+            <p className="text-xs text-gray-400">💡 Use the same login you used to connect (your Kroger account works at {storeName})</p>
           </motion.div>
         );
       })()}
