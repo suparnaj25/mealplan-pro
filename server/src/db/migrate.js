@@ -222,6 +222,8 @@ try {
   db.exec(migration);
   // Add scale_factor to existing meal_plan_items tables (safe if column already exists)
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN scale_factor REAL DEFAULT 1.0'); } catch(e) { /* column already exists */ }
+  // Add dietary compliance cache to recipes (stores JSON of restriction→boolean pairs)
+  try { db.exec('ALTER TABLE recipes ADD COLUMN dietary_compliance TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);
