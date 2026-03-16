@@ -26,6 +26,8 @@ export default function MealPlan() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [showGenModal, setShowGenModal] = useState(false);
+  const [genMealTypes, setGenMealTypes] = useState({ breakfast: true, lunch: true, dinner: true, snacks: false });
   const navigate = useNavigate();
 
   useEffect(() => { loadPlan(); }, [weekStart]);
@@ -56,9 +58,21 @@ export default function MealPlan() {
     }
   };
 
+  // Load saved meal preferences
+  useEffect(() => {
+    api.getPreferences().then(data => {
+      const ms = data.mealStructure || {};
+      setGenMealTypes({ breakfast: !!ms.breakfast, lunch: !!ms.lunch, dinner: !!ms.dinner, snacks: !!ms.snacks });
+    }).catch(() => {});
+  }, []);
+
+  const openGenerateModal = () => setShowGenModal(true);
+
   const handleGenerate = async () => {
+    setShowGenModal(false);
     setGenerating(true);
     try {
+      await api.updateProfile({ mealStructure: genMealTypes });
       const data = await api.generateMealPlan(weekStart);
       setPlan(data.plan);
       setItems(data.items || []);
@@ -183,7 +197,7 @@ export default function MealPlan() {
             <button onClick={handleCreateGroceryList} className="btn-secondary flex items-center gap-2 text-sm">
               <ShoppingCart size={16} /> Generate Grocery List
             </button>
-            <button onClick={handleGenerate} disabled={generating} className="btn-primary flex items-center gap-2 text-sm">
+            <button onClick={openGenerateModal} disabled={generating} className="btn-primary flex items-center gap-2 text-sm">
               {generating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Sparkles size={16} />}
               Regenerate Plan
             </button>
@@ -214,7 +228,7 @@ export default function MealPlan() {
           <div className="text-6xl mb-4">🍽️</div>
           <h3 className="text-xl font-bold mb-2">No meal plan yet</h3>
           <p className="text-gray-500 mb-6">Generate a personalized meal plan based on your preferences</p>
-          <button onClick={handleGenerate} disabled={generating} className="btn-primary inline-flex items-center gap-2">
+          <button onClick={openGenerateModal} disabled={generating} className="btn-primary inline-flex items-center gap-2">
             <Sparkles size={18} /> Generate My Meal Plan
           </button>
         </motion.div>
@@ -314,13 +328,49 @@ export default function MealPlan() {
             <button onClick={handleCreateGroceryList} className="btn-primary flex items-center gap-2">
               <ShoppingCart size={18} /> Generate Grocery List
             </button>
-            <button onClick={handleGenerate} disabled={generating} className="btn-secondary flex items-center gap-2">
+            <button onClick={openGenerateModal} disabled={generating} className="btn-secondary flex items-center gap-2">
               {generating ? <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={18} />}
               Regenerate Meal Plan
             </button>
           </div>
         </div>
       )}
+      {/* Generate Plan Modal */}
+      <AnimatePresence>
+        {showGenModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowGenModal(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-bold text-lg mb-2">🍽️ What meals should we plan?</h3>
+              <p className="text-xs text-gray-500 mb-4">Select which meals to include. You can change this each week.</p>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {[
+                  { key: 'breakfast', label: 'Breakfast', icon: '🌅' },
+                  { key: 'lunch', label: 'Lunch', icon: '☀️' },
+                  { key: 'dinner', label: 'Dinner', icon: '🌙' },
+                  { key: 'snacks', label: 'Snacks', icon: '🍿' },
+                ].map(({ key, label, icon }) => (
+                  <button key={key} onClick={() => setGenMealTypes(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`py-4 rounded-xl text-sm font-medium transition-all flex flex-col items-center gap-1 ${
+                      genMealTypes[key] ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                    }`}>
+                    <span className="text-2xl">{icon}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowGenModal(false)} className="btn-secondary flex-1 text-sm">Cancel</button>
+                <button onClick={handleGenerate} disabled={!Object.values(genMealTypes).some(Boolean)} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm">
+                  <Sparkles size={16} /> Generate Plan
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Copy Meal Modal */}
       <AnimatePresence>
         {copyModal && (
