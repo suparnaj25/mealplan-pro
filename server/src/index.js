@@ -12,6 +12,7 @@ const recipesRoutes = require('./routes/recipes');
 const krogerRoutes = require('./routes/kroger');
 const userRecipesRoutes = require('./routes/userRecipes');
 const aiRoutes = require('./routes/ai');
+const familyRoutes = require('./routes/family');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,6 +39,7 @@ app.use('/api/recipes', recipesRoutes);
 app.use('/api/kroger', krogerRoutes);
 app.use('/api/user-recipes', userRecipesRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/family', familyRoutes);
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/food', require('./routes/foodSearch'));
 app.use('/api/images', require('./routes/images'));
