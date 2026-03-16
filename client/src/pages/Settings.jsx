@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings as SettingsIcon, User, Moon, Sun, Save, ShieldAlert, Salad, Gauge, Heart, Globe, ShoppingBag, Leaf, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { Settings as SettingsIcon, User, Moon, Sun, Save, ShieldAlert, Salad, Gauge, Heart, Globe, ShoppingBag, Leaf, ChevronDown, ChevronUp, Check, Users, Copy, LogOut as LeaveIcon } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 import TagInput from '../components/TagInput';
@@ -137,6 +137,102 @@ export default function Settings() {
   };
 
   const toggleInArray = (arr, item) => arr.includes(item) ? arr.filter(i => i !== item) : [...arr, item];
+
+  function FamilySection() {
+    const [family, setFamily] = useState(null);
+    const [members, setMembers] = useState([]);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [familyLoading, setFamilyLoading] = useState(true);
+    const [familyName, setFamilyName] = useState('');
+    const [joinCodeInput, setJoinCodeInput] = useState('');
+    const [codeCopied, setCodeCopied] = useState(false);
+
+    useEffect(() => { loadFamily(); }, []);
+
+    const loadFamily = async () => {
+      try {
+        const data = await api.getFamily();
+        setFamily(data.family);
+        setMembers(data.members || []);
+        setIsAdmin(data.isAdmin);
+      } catch {} finally { setFamilyLoading(false); }
+    };
+
+    const handleCreate = async () => {
+      if (!familyName.trim()) return;
+      try { await api.createFamily(familyName.trim()); await loadFamily(); }
+      catch (err) { alert(err.message); }
+    };
+
+    const handleJoin = async () => {
+      if (!joinCodeInput.trim()) return;
+      try { await api.joinFamily(joinCodeInput.trim()); await loadFamily(); setJoinCodeInput(''); }
+      catch (err) { alert(err.message); }
+    };
+
+    const handleLeave = async () => {
+      if (!confirm('Leave this family?')) return;
+      try { await api.leaveFamily(); setFamily(null); setMembers([]); }
+      catch (err) { alert(err.message); }
+    };
+
+    if (familyLoading) return <p className="text-sm text-gray-400">Loading...</p>;
+
+    if (!family) {
+      return (
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">Create a family to share meal plans, grocery lists, and pantry. Each member tracks their own food individually.</p>
+          <div>
+            <label className="block text-xs font-medium mb-1 text-gray-500">Create a new family</label>
+            <div className="flex gap-2">
+              <input type="text" value={familyName} onChange={(e) => setFamilyName(e.target.value)} placeholder="Family name" className="input-field text-sm flex-1" />
+              <button onClick={handleCreate} className="btn-primary text-sm">Create</button>
+            </div>
+          </div>
+          <div className="text-center text-xs text-gray-400">— or —</div>
+          <div>
+            <label className="block text-xs font-medium mb-1 text-gray-500">Join an existing family</label>
+            <div className="flex gap-2">
+              <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())} placeholder="Enter join code" className="input-field text-sm flex-1 uppercase" maxLength={6} />
+              <button onClick={handleJoin} className="btn-secondary text-sm">Join</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-sm">{family.name}</p>
+            <p className="text-xs text-gray-500">{members.length} member{members.length !== 1 ? 's' : ''}</p>
+          </div>
+          <button onClick={() => { navigator.clipboard.writeText(family.join_code); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }}
+            className="btn-secondary text-xs flex items-center gap-1">
+            <Copy size={12} /> {codeCopied ? 'Copied!' : family.join_code}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">Share code <span className="font-mono font-bold text-brand-500">{family.join_code}</span> with family members to join.</p>
+        <div className="space-y-2">
+          {members.map(m => (
+            <div key={m.user_id} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-500 text-sm font-bold">
+                {(m.name || m.email || '?')[0].toUpperCase()}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">{m.name || m.email}</p>
+                <p className="text-xs text-gray-400">{m.role === 'admin' ? '👑 Admin' : 'Member'}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={handleLeave} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1">
+          <LeaveIcon size={12} /> Leave family
+        </button>
+      </div>
+    );
+  }
 
   if (loading) return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -364,6 +460,11 @@ export default function Settings() {
         <button onClick={() => saveSection('store', () => api.updateStore({ primaryStore, organicPreference: organicPref }))} className="btn-primary text-sm flex items-center gap-2">
           {savingSection === 'store' ? <Check size={14} /> : <Save size={14} />} {savingSection === 'store' ? 'Saved!' : 'Save Store'}
         </button>
+      </Section>
+
+      {/* Family */}
+      <Section icon={Users} title="Family / Household">
+        <FamilySection />
       </Section>
 
       {/* Appearance */}

@@ -224,6 +224,26 @@ try {
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN scale_factor REAL DEFAULT 1.0'); } catch(e) { /* column already exists */ }
   // Add dietary compliance cache to recipes (stores JSON of restriction→boolean pairs)
   try { db.exec('ALTER TABLE recipes ADD COLUMN dietary_compliance TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Family/multi-user tables
+  try { db.exec(`
+    CREATE TABLE IF NOT EXISTS families (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      join_code TEXT UNIQUE NOT NULL,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS family_members (
+      id TEXT PRIMARY KEY,
+      family_id TEXT REFERENCES families(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT DEFAULT 'member',
+      joined_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(family_id, user_id)
+    );
+  `); } catch(e) { /* tables already exist */ }
+  // Add family_id to users for quick lookup
+  try { db.exec('ALTER TABLE users ADD COLUMN family_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

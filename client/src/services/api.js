@@ -240,6 +240,20 @@ class ApiService {
   aiWeekInsights() {
     return this.request('/ai/week-insights', { method: 'POST' });
   }
+
+  // Family
+  getFamily() {
+    return this.request('/family');
+  }
+  createFamily(name) {
+    return this.request('/family/create', { method: 'POST', body: JSON.stringify({ name }) });
+  }
+  joinFamily(joinCode) {
+    return this.request('/family/join', { method: 'POST', body: JSON.stringify({ joinCode }) });
+  }
+  leaveFamily() {
+    return this.request('/family/leave', { method: 'POST' });
+  }
 }
 
 export const api = new ApiService();
