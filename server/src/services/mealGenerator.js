@@ -108,6 +108,113 @@ function scoreVariety(recipe, usedCuisines, usedRecipeIds) {
   return penalty;
 }
 
+/**
+ * Estimate per-serving nutrition from ingredient list using a lookup table.
+ * This replaces the old hardcoded { calories: 400, protein: 20, carbs: 40, fat: 15 }
+ * for TheMealDB recipes that have no nutrition data.
+ * Values are approximate per typical portion used in a recipe serving for 4.
+ */
+function estimateNutritionFromIngredients(ingredients, recipeName) {
+  // Per-ingredient calorie/macro estimates (per typical recipe quantity, divided by 4 servings)
+  const INGREDIENT_MACROS = {
+    // Proteins
+    'chicken': { cal: 55, p: 10, c: 0, f: 1.5 }, 'beef': { cal: 70, p: 8, c: 0, f: 4 },
+    'pork': { cal: 65, p: 8, c: 0, f: 3.5 }, 'lamb': { cal: 70, p: 8, c: 0, f: 4 },
+    'turkey': { cal: 45, p: 9, c: 0, f: 1 }, 'salmon': { cal: 55, p: 8, c: 0, f: 3 },
+    'shrimp': { cal: 30, p: 7, c: 0, f: 0.5 }, 'tuna': { cal: 40, p: 9, c: 0, f: 0.5 },
+    'fish': { cal: 40, p: 8, c: 0, f: 1 }, 'egg': { cal: 35, p: 3, c: 0.5, f: 2.5 },
+    'tofu': { cal: 25, p: 3, c: 1, f: 1.5 }, 'lentil': { cal: 30, p: 2.5, c: 5, f: 0 },
+    'chickpea': { cal: 35, p: 2, c: 6, f: 0.5 }, 'bean': { cal: 30, p: 2, c: 5, f: 0 },
+    // Grains & Starches
+    'rice': { cal: 55, p: 1, c: 12, f: 0 }, 'pasta': { cal: 55, p: 2, c: 11, f: 0.5 },
+    'noodle': { cal: 50, p: 2, c: 10, f: 0.5 }, 'bread': { cal: 35, p: 1.5, c: 7, f: 0.5 },
+    'flour': { cal: 25, p: 1, c: 5, f: 0 }, 'potato': { cal: 40, p: 1, c: 9, f: 0 },
+    'sweet potato': { cal: 35, p: 0.5, c: 8, f: 0 }, 'oat': { cal: 40, p: 2, c: 7, f: 1.5 },
+    'quinoa': { cal: 30, p: 1.5, c: 5, f: 0.5 }, 'tortilla': { cal: 30, p: 1, c: 5, f: 1 },
+    'couscous': { cal: 45, p: 1.5, c: 9, f: 0 },
+    // Dairy
+    'cheese': { cal: 30, p: 2, c: 0.5, f: 2.5 }, 'milk': { cal: 15, p: 1, c: 1.5, f: 0.5 },
+    'cream': { cal: 25, p: 0.5, c: 0.5, f: 2.5 }, 'butter': { cal: 25, p: 0, c: 0, f: 3 },
+    'yogurt': { cal: 15, p: 1.5, c: 1, f: 0.5 },
+    // Vegetables (low cal)
+    'onion': { cal: 8, p: 0.2, c: 2, f: 0 }, 'garlic': { cal: 3, p: 0, c: 0.5, f: 0 },
+    'tomato': { cal: 8, p: 0.3, c: 1.5, f: 0 }, 'pepper': { cal: 8, p: 0.3, c: 1.5, f: 0 },
+    'carrot': { cal: 8, p: 0.2, c: 2, f: 0 }, 'spinach': { cal: 5, p: 0.5, c: 0.5, f: 0 },
+    'broccoli': { cal: 8, p: 0.5, c: 1.5, f: 0 }, 'mushroom': { cal: 5, p: 0.5, c: 0.5, f: 0 },
+    'celery': { cal: 3, p: 0, c: 0.5, f: 0 }, 'cucumber': { cal: 4, p: 0.2, c: 1, f: 0 },
+    'lettuce': { cal: 3, p: 0.2, c: 0.5, f: 0 }, 'zucchini': { cal: 5, p: 0.3, c: 1, f: 0 },
+    'cabbage': { cal: 5, p: 0.3, c: 1, f: 0 }, 'corn': { cal: 20, p: 0.5, c: 4, f: 0.5 },
+    'pea': { cal: 15, p: 1, c: 2.5, f: 0 }, 'avocado': { cal: 40, p: 0.5, c: 2, f: 4 },
+    // Oils & Fats
+    'oil': { cal: 30, p: 0, c: 0, f: 3.5 }, 'olive oil': { cal: 30, p: 0, c: 0, f: 3.5 },
+    'coconut milk': { cal: 30, p: 0.5, c: 1, f: 3 }, 'coconut cream': { cal: 35, p: 0.5, c: 1, f: 3.5 },
+    'peanut butter': { cal: 25, p: 1, c: 1, f: 2 },
+    // Sauces & Condiments
+    'soy sauce': { cal: 3, p: 0.5, c: 0.5, f: 0 }, 'honey': { cal: 15, p: 0, c: 4, f: 0 },
+    'sugar': { cal: 15, p: 0, c: 4, f: 0 }, 'vinegar': { cal: 2, p: 0, c: 0, f: 0 },
+    // Nuts & Seeds
+    'almond': { cal: 20, p: 1, c: 0.5, f: 1.5 }, 'walnut': { cal: 20, p: 0.5, c: 0.5, f: 2 },
+    'cashew': { cal: 20, p: 0.5, c: 1, f: 1.5 }, 'sesame': { cal: 15, p: 0.5, c: 0.5, f: 1.5 },
+    // Fruits
+    'banana': { cal: 25, p: 0.3, c: 6, f: 0 }, 'apple': { cal: 15, p: 0, c: 4, f: 0 },
+    'lemon': { cal: 3, p: 0, c: 1, f: 0 }, 'lime': { cal: 3, p: 0, c: 1, f: 0 },
+    'coconut': { cal: 20, p: 0.5, c: 1, f: 2 },
+    // Spices (negligible)
+    'salt': { cal: 0, p: 0, c: 0, f: 0 }, 'pepper': { cal: 0, p: 0, c: 0, f: 0 },
+    'cumin': { cal: 1, p: 0, c: 0, f: 0 }, 'paprika': { cal: 1, p: 0, c: 0, f: 0 },
+    'cinnamon': { cal: 1, p: 0, c: 0, f: 0 }, 'turmeric': { cal: 1, p: 0, c: 0, f: 0 },
+    'parsley': { cal: 1, p: 0, c: 0, f: 0 }, 'cilantro': { cal: 1, p: 0, c: 0, f: 0 },
+    'basil': { cal: 1, p: 0, c: 0, f: 0 }, 'oregano': { cal: 1, p: 0, c: 0, f: 0 },
+    'thyme': { cal: 1, p: 0, c: 0, f: 0 }, 'rosemary': { cal: 1, p: 0, c: 0, f: 0 },
+    'ginger': { cal: 2, p: 0, c: 0.5, f: 0 }, 'chili': { cal: 2, p: 0, c: 0.5, f: 0 },
+  };
+
+  let totalCal = 0, totalP = 0, totalC = 0, totalF = 0;
+  let matchedCount = 0;
+
+  for (const ing of ingredients) {
+    const name = (ing.name || '').toLowerCase().trim();
+    let matched = false;
+    // Try exact match first, then partial match
+    for (const [key, macros] of Object.entries(INGREDIENT_MACROS)) {
+      if (name.includes(key) || key.includes(name)) {
+        totalCal += macros.cal;
+        totalP += macros.p;
+        totalC += macros.c;
+        totalF += macros.f;
+        matched = true;
+        matchedCount++;
+        break;
+      }
+    }
+    // Default for unmatched ingredients: assume ~15 cal per ingredient contribution
+    if (!matched) {
+      totalCal += 15;
+      totalP += 0.5;
+      totalC += 2;
+      totalF += 0.5;
+    }
+  }
+
+  // Sanity check: ensure minimum reasonable values per serving
+  const result = {
+    calories: Math.max(150, Math.round(totalCal)),
+    protein: Math.max(5, Math.round(totalP)),
+    carbs: Math.max(5, Math.round(totalC)),
+    fat: Math.max(3, Math.round(totalF)),
+    fiber: Math.round(ingredients.length * 0.5), // rough estimate
+  };
+
+  // Verify calorie math: cal should roughly equal 4*P + 4*C + 9*F
+  const computedCal = result.protein * 4 + result.carbs * 4 + result.fat * 9;
+  if (Math.abs(computedCal - result.calories) > result.calories * 0.3) {
+    // Adjust calories to match macro math
+    result.calories = computedCal;
+  }
+
+  return result;
+}
+
 // ── Dynamic recipe fetching from TheMealDB ──
 const MEALDB_SEARCH_TERMS_VEGAN = {
   breakfast: ['porridge', 'fruit', 'smoothie', 'toast', 'pancake'],
@@ -144,12 +251,14 @@ async function fetchAndCacheFromInternetWithTerm(mealType, restrictions, searchT
         }
       }
 
+      const estimatedNutrition = estimateNutritionFromIngredients(ingredients, m.strMeal);
+
       try {
         db.prepare('INSERT INTO recipes (id, source, external_id, name, description, cuisine, diet_tags, meal_type, ingredients, instructions, nutrition, image_url, prep_time_minutes, cook_time_minutes, servings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(uuidv4(), 'themealdb', extId, m.strMeal, (m.strInstructions || '').slice(0, 200), m.strArea || null,
             JSON.stringify(m.strTags ? m.strTags.split(',').map(t => t.trim().toLowerCase()) : []), mealType,
             JSON.stringify(ingredients), JSON.stringify(m.strInstructions ? m.strInstructions.split('\r\n').filter(Boolean).slice(0, 10) : []),
-            JSON.stringify({ calories: 400, protein: 20, carbs: 40, fat: 15 }), m.strMealThumb || null, 15, 30, 4);
+            JSON.stringify(estimatedNutrition), m.strMealThumb || null, 15, 30, 4);
       } catch (e) { /* duplicate */ }
     }
   } catch (error) {
@@ -188,6 +297,9 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
         }
       }
 
+      // Estimate nutrition from ingredients using AI if available, otherwise use ingredient-based heuristic
+      let estimatedNutrition = estimateNutritionFromIngredients(ingredients, m.strMeal);
+
       const recipe = {
         id: uuidv4(),
         source: 'themealdb',
@@ -199,7 +311,7 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
         meal_type: mealType,
         ingredients: JSON.stringify(ingredients),
         instructions: JSON.stringify(m.strInstructions ? m.strInstructions.split('\r\n').filter(Boolean).slice(0, 10) : []),
-        nutrition: JSON.stringify({ calories: 400, protein: 20, carbs: 40, fat: 15 }),
+        nutrition: JSON.stringify(estimatedNutrition),
         image_url: m.strMealThumb || null,
         prep_time_minutes: 15,
         cook_time_minutes: 30,

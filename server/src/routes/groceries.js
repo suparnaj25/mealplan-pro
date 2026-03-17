@@ -25,11 +25,12 @@ router.post('/generate', (req, res) => {
     const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ? AND user_id = ?').get(mealPlanId, userId);
     if (!plan) return res.status(404).json({ error: 'Not found' });
 
-    const planItems = db.prepare('SELECT mpi.servings, r.ingredients, r.servings as recipe_servings FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?').all(mealPlanId);
+    const planItems = db.prepare('SELECT mpi.servings, mpi.scale_factor, r.ingredients, r.servings as recipe_servings FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?').all(mealPlanId);
 
     const ingredientMap = new Map();
     for (const item of planItems) {
-      const mult = (item.servings || 1) / (item.recipe_servings || 4);
+      const scaleFactor = item.scale_factor || 1.0;
+      const mult = ((item.servings || 1) / (item.recipe_servings || 4)) * scaleFactor;
       const ings = parseJSON(item.ingredients, []);
       for (const ing of ings) {
         const key = `${ing.name.toLowerCase().trim()}|${(ing.unit || '').toLowerCase().trim()}`;
