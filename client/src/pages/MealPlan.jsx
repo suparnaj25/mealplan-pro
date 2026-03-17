@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus } from 'lucide-react';
 import { api } from '../services/api';
+import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate } from 'react-router-dom';
 import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
 
@@ -28,6 +29,7 @@ export default function MealPlan() {
   const [generating, setGenerating] = useState(false);
   const [showGenModal, setShowGenModal] = useState(false);
   const [genMealTypes, setGenMealTypes] = useState({ breakfast: true, lunch: true, dinner: true, snacks: false });
+  const [aiSheet, setAiSheet] = useState({ open: false, type: null, data: null, loading: false });
   const navigate = useNavigate();
 
   useEffect(() => { loadPlan(); }, [weekStart]);
@@ -335,21 +337,22 @@ export default function MealPlan() {
 
             {/* AI Plan Explanation */}
             <button onClick={async () => {
+              setAiSheet({ open: true, type: 'summary', data: null, loading: true });
               try {
                 const result = await api.aiExplainPlan(plan.id);
-                alert(`📋 Plan Summary\n\n${result.summary}\n\n🎯 ${result.highlights?.join('\n🎯 ') || ''}\n\n💡 ${result.tips?.join('\n💡 ') || ''}`);
-              } catch (err) { alert(err.message); }
+                setAiSheet({ open: true, type: 'summary', data: result, loading: false });
+              } catch (err) { setAiSheet({ open: true, type: 'summary', data: { error: err.message }, loading: false }); }
             }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
               <Sparkles size={16} /> AI Plan Summary
             </button>
 
             {/* AI Meal Prep Guide */}
             <button onClick={async () => {
+              setAiSheet({ open: true, type: 'prep', data: null, loading: true });
               try {
                 const result = await api.aiMealPrep(plan.id);
-                const steps = result.steps?.map((s, i) => `${i+1}. ${s}`).join('\n') || '';
-                alert(`🍳 Meal Prep Guide\n\n⏱️ Total time: ${result.totalTime || '~2 hours'}\n\n${steps}\n\n💡 ${result.tips?.join('\n💡 ') || ''}`);
-              } catch (err) { alert(err.message); }
+                setAiSheet({ open: true, type: 'prep', data: result, loading: false });
+              } catch (err) { setAiSheet({ open: true, type: 'prep', data: { error: err.message }, loading: false }); }
             }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
               <ChefHat size={16} /> AI Meal Prep Guide
             </button>
@@ -463,6 +466,54 @@ export default function MealPlan() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AI Result Sheet */}
+      <AiResultSheet
+        open={aiSheet.open}
+        onClose={() => setAiSheet({ open: false, type: null, data: null, loading: false })}
+        loading={aiSheet.loading}
+        title={aiSheet.type === 'summary' ? 'Plan Summary' : 'Meal Prep Guide'}
+        emoji={aiSheet.type === 'summary' ? '📋' : '🍳'}
+        gradient={aiSheet.type === 'summary' ? 'from-blue-500 to-indigo-500' : 'from-orange-500 to-red-500'}
+      >
+        {aiSheet.data?.error ? (
+          <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
+        ) : aiSheet.type === 'summary' && aiSheet.data ? (
+          <>
+            {aiSheet.data.summary && <AiCard icon="📝" title="Overview">{aiSheet.data.summary}</AiCard>}
+            {aiSheet.data.highlights?.length > 0 && (
+              <AiSection title="Highlights">
+                {aiSheet.data.highlights.map((h, i) => <AiCard key={i} icon="🎯">{h}</AiCard>)}
+              </AiSection>
+            )}
+            {aiSheet.data.tips?.length > 0 && (
+              <AiSection title="Tips">
+                {aiSheet.data.tips.map((t, i) => <AiCard key={i} icon="💡">{t}</AiCard>)}
+              </AiSection>
+            )}
+          </>
+        ) : aiSheet.type === 'prep' && aiSheet.data ? (
+          <>
+            {aiSheet.data.totalTime && (
+              <AiCard icon="⏱️" title="Total Prep Time" highlight>{aiSheet.data.totalTime}</AiCard>
+            )}
+            {aiSheet.data.steps?.length > 0 && (
+              <AiSection title="Prep Steps">
+                {aiSheet.data.steps.map((s, i) => (
+                  <AiCard key={i} icon={`${i + 1}️⃣`} title={typeof s === 'string' ? `Step ${i + 1}` : s.title}>
+                    {typeof s === 'string' ? s : s.detail}
+                  </AiCard>
+                ))}
+              </AiSection>
+            )}
+            {aiSheet.data.tips?.length > 0 && (
+              <AiSection title="Pro Tips">
+                {aiSheet.data.tips.map((t, i) => <AiCard key={i} icon="💡">{t}</AiCard>)}
+              </AiSection>
+            )}
+          </>
+        ) : null}
+      </AiResultSheet>
     </div>
   );
 }
