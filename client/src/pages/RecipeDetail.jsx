@@ -500,6 +500,30 @@ export default function RecipeDetail() {
           {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🥬'}
           {subsLoading ? 'Finding alternatives...' : 'Swap ingredients'}
         </button>
+        <button onClick={async () => {
+          try {
+            const result = await api.aiRecipeEnhance(recipe?.id || id, 'cooking-tips');
+            alert(`👨‍🍳 Cooking Tips\n\n${result.tips?.map((t, i) => `${i+1}. ${t}`).join('\n') || result.content || 'No tips available'}`);
+          } catch (err) { alert(err.message); }
+        }} className="btn-secondary text-xs flex items-center gap-1.5">
+          👨‍🍳 Cooking Tips
+        </button>
+        <button onClick={async () => {
+          try {
+            const result = await api.aiRecipeEnhance(recipe?.id || id, 'make-healthier');
+            alert(`🥗 Healthier Version\n\n${result.suggestions?.map((s, i) => `${i+1}. ${s}`).join('\n') || result.content || 'No suggestions'}`);
+          } catch (err) { alert(err.message); }
+        }} className="btn-secondary text-xs flex items-center gap-1.5">
+          🥗 Make Healthier
+        </button>
+        <button onClick={async () => {
+          try {
+            const result = await api.aiRecipeEnhance(recipe?.id || id, 'pairings');
+            alert(`🍷 Pairings\n\n${result.pairings?.map((p, i) => `${i+1}. ${p}`).join('\n') || result.content || 'No pairings'}`);
+          } catch (err) { alert(err.message); }
+        }} className="btn-secondary text-xs flex items-center gap-1.5">
+          🍷 Pairings
+        </button>
       </div>
 
       {/* Substitution Results */}

@@ -190,6 +190,19 @@ export default function GroceryList() {
             <p className="text-sm text-gray-500 mt-1">
               {checkedCount}/{totalCount} items checked · {needToBuy.length} to buy
             </p>
+            {needToBuy.length > 0 && (
+              <button onClick={async () => {
+                try {
+                  const itemNames = needToBuy.map(i => i.ingredient_name || i.name);
+                  const result = await api.aiOptimizeGrocery(itemNames);
+                  const tips = result.tips?.join('\n💡 ') || '';
+                  const subs = result.substitutions?.map(s => `• ${s.original} → ${s.substitute} (${s.reason})`).join('\n') || '';
+                  alert(`🛒 AI Shopping Tips\n\n💰 Est. total: ${result.estimatedTotal || 'N/A'}\n\n💡 ${tips}\n\n🔄 Substitutions:\n${subs}`);
+                } catch (err) { alert(err.message); }
+              }} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
+                ✨ AI Shopping Tips
+              </button>
+            )}
           </div>
           <button onClick={handleCopyList} className="btn-secondary flex items-center gap-2 text-sm flex-shrink-0">
             {copied ? <CheckCheck size={16} className="text-brand-500" /> : <Copy size={16} />}
@@ -233,9 +246,9 @@ export default function GroceryList() {
             </h3>
             <p className="text-sm text-gray-500">Items have been added to your Kroger account cart.</p>
             <div className="flex flex-col items-center gap-2">
-              <a href="https://www.kroger.com/cart" target="_blank" rel="noopener noreferrer"
+              <a href={cartUrl} target="_blank" rel="noopener noreferrer"
                 className="btn-primary inline-flex items-center gap-2">
-                <ShoppingCart size={18} /> View Cart on Kroger.com →
+                <ShoppingCart size={18} /> View Cart on {storeName} →
               </a>
               {currentStore !== 'kroger' && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg">

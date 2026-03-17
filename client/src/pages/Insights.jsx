@@ -136,6 +136,26 @@ export default function Insights() {
         </motion.div>
       )}
 
+      {/* Multi-Week Trend Analysis */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+        className="glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm flex items-center gap-2">📈 Multi-Week Trends</h3>
+          <button onClick={async () => {
+            try {
+              const result = await api.aiTrends();
+              if (result.summary && !result.patterns?.length) { alert(result.summary); return; }
+              const patterns = result.patterns?.map(p => `• ${p}`).join('\n') || '';
+              const predictions = result.predictions?.map(p => `🔮 ${p}`).join('\n') || '';
+              alert(`📈 Trend Analysis\n\n${result.summary}\n\nPatterns:\n${patterns}\n\nPredictions:\n${predictions}`);
+            } catch (err) { alert(err.message); }
+          }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
+            ✨ Analyze Trends
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">AI analyzes your last 4 weeks of data to find patterns and predict your trajectory</p>
+      </motion.div>
+
       {/* Streaks & Achievements */}
       {streaks && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass-card p-5">

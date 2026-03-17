@@ -278,4 +278,157 @@ Forecast (${forecast.days} days, logged + planned): avg ${forecast.days > 0 ? Ma
   }
 });
 
+// POST /api/ai/analyze-photo — Vision-based food photo analysis
+router.post('/analyze-photo', async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'image (base64) required' });
+    const result = await ai.analyzePhoto(image);
+    res.json(result);
+  } catch (error) {
+    console.error('AI analyze-photo error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/parse-food — Natural language food → nutrition
+router.post('/parse-food', async (req, res) => {
+  try {
+    const { description } = req.body;
+    if (!description) return res.status(400).json({ error: 'description required' });
+    const result = await ai.parseFoodDescription(description);
+    res.json(result);
+  } catch (error) {
+    console.error('AI parse-food error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/explain-plan — Personalized meal plan summary
+router.post('/explain-plan', async (req, res) => {
+  try {
+    const { planId } = req.body;
+    if (!planId) return res.status(400).json({ error: 'planId required' });
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    const result = await ai.explainMealPlan(req.user.id, planId);
+    res.json(result);
+  } catch (error) {
+    console.error('AI explain-plan error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/optimize-grocery — Smart grocery list optimization
+router.post('/optimize-grocery', async (req, res) => {
+  try {
+    const { items, store, budget, organic } = req.body;
+    if (!items || !items.length) return res.status(400).json({ error: 'items required' });
+    const result = await ai.optimizeGroceryList(items, { store, budget, organic });
+    res.json(result);
+  } catch (error) {
+    console.error('AI optimize-grocery error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/ai/pantry-alerts — Expiry alerts with AI suggestions
+router.get('/pantry-alerts', async (req, res) => {
+  try {
+    const now = new Date();
+    const items = db.prepare('SELECT * FROM pantry_items WHERE user_id = ? AND expiry_date IS NOT NULL ORDER BY expiry_date').all(req.user.id);
+    const expiring = items.filter(i => {
+      const exp = new Date(i.expiry_date + 'T23:59:59');
+      const daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+      return daysLeft >= 0 && daysLeft <= 5;
+    }).map(i => {
+      const exp = new Date(i.expiry_date + 'T23:59:59');
+      return { ...i, daysLeft: Math.ceil((exp - now) / (1000 * 60 * 60 * 24)) };
+    });
+
+    if (expiring.length === 0) return res.json({ alerts: [], mealIdea: null, tip: 'Nothing expiring soon — nice work keeping your pantry fresh! 🌿' });
+
+    const result = await ai.pantryExpiryAlerts(expiring, req.user.id);
+    res.json(result);
+  } catch (error) {
+    console.error('AI pantry-alerts error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/recipe-enhance — Cooking tips, healthier version, pairings
+router.post('/recipe-enhance', async (req, res) => {
+  try {
+    const { recipeId, type } = req.body;
+    if (!recipeId || !type) return res.status(400).json({ error: 'recipeId and type required' });
+    if (!['cooking-tips', 'make-healthier', 'pairings'].includes(type)) return res.status(400).json({ error: 'type must be cooking-tips, make-healthier, or pairings' });
+
+    const recipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(recipeId);
+    if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
+
+    const result = await ai.getRecipeEnhancements(recipe, type);
+    res.json(result);
+  } catch (error) {
+    console.error('AI recipe-enhance error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/meal-prep — Generate meal prep guide
+router.post('/meal-prep', async (req, res) => {
+  try {
+    const { planId } = req.body;
+    if (!planId) return res.status(400).json({ error: 'planId required' });
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    const result = await ai.generateMealPrepGuide(req.user.id, planId);
+    res.json(result);
+  } catch (error) {
+    console.error('AI meal-prep error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/trends — Multi-week trend analysis
+router.post('/trends', async (req, res) => {
+  try {
+    const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id);
+    const targets = {
+      calories: macros?.calories || 2000,
+      protein: macros?.protein_g || 150,
+      carbs: macros?.carbs_g || 200,
+      fat: macros?.fat_g || 67,
+    };
+
+    // Get last 4 weeks of data
+    const weeks = [];
+    for (let w = 0; w < 4; w++) {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - (w * 7 + startDate.getDay() - 1));
+      const weekStart = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`;
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      const weekEnd = `${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`;
+
+      const logs = db.prepare("SELECT date, SUM(calories) as cal, SUM(protein_g) as prot, SUM(carbs_g) as carbs, SUM(fat_g) as fat FROM meal_logs WHERE user_id = ? AND date >= ? AND date <= ? AND status IN ('eaten','modified') GROUP BY date").all(req.user.id, weekStart, weekEnd);
+
+      if (logs.length > 0) {
+        const avgCal = Math.round(logs.reduce((s, l) => s + l.cal, 0) / logs.length);
+        const avgProt = Math.round(logs.reduce((s, l) => s + l.prot, 0) / logs.length);
+        const avgCarbs = Math.round(logs.reduce((s, l) => s + l.carbs, 0) / logs.length);
+        const avgFat = Math.round(logs.reduce((s, l) => s + l.fat, 0) / logs.length);
+        weeks.push({ weekStart, daysLogged: logs.length, avgCalories: avgCal, avgProtein: avgProt, avgCarbs, avgFat });
+      }
+    }
+
+    if (weeks.length < 2) return res.json({ summary: 'Need at least 2 weeks of data for trend analysis. Keep logging!', patterns: [], predictions: [] });
+
+    const result = await ai.analyzeTrends(weeks, targets);
+    res.json(result);
+  } catch (error) {
+    console.error('AI trends error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

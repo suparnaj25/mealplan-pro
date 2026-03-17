@@ -172,7 +172,7 @@ export default function MealPlan() {
   };
 
   const weekDates = DAYS.map((_, i) => {
-    const d = new Date(weekStart);
+    const d = new Date(weekStart + 'T12:00:00');
     d.setDate(d.getDate() + i);
     return d;
   });
@@ -331,6 +331,27 @@ export default function MealPlan() {
             <button onClick={openGenerateModal} disabled={generating} className="btn-secondary flex items-center gap-2">
               {generating ? <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={18} />}
               Regenerate Meal Plan
+            </button>
+
+            {/* AI Plan Explanation */}
+            <button onClick={async () => {
+              try {
+                const result = await api.aiExplainPlan(plan.id);
+                alert(`📋 Plan Summary\n\n${result.summary}\n\n🎯 ${result.highlights?.join('\n🎯 ') || ''}\n\n💡 ${result.tips?.join('\n💡 ') || ''}`);
+              } catch (err) { alert(err.message); }
+            }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
+              <Sparkles size={16} /> AI Plan Summary
+            </button>
+
+            {/* AI Meal Prep Guide */}
+            <button onClick={async () => {
+              try {
+                const result = await api.aiMealPrep(plan.id);
+                const steps = result.steps?.map((s, i) => `${i+1}. ${s}`).join('\n') || '';
+                alert(`🍳 Meal Prep Guide\n\n⏱️ Total time: ${result.totalTime || '~2 hours'}\n\n${steps}\n\n💡 ${result.tips?.join('\n💡 ') || ''}`);
+              } catch (err) { alert(err.message); }
+            }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
+              <ChefHat size={16} /> AI Meal Prep Guide
             </button>
           </div>
         </div>

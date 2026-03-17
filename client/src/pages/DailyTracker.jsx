@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame } from 'lucide-react';
+import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame, Sparkles, Camera } from 'lucide-react';
 import { api } from '../services/api';
 
 const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
@@ -48,8 +48,12 @@ function MacroBar({ label, value, target, color }) {
   );
 }
 
+function getLocalDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 export default function DailyTracker() {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateStr());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -60,6 +64,8 @@ export default function DailyTracker() {
   const [searchingFood, setSearchingFood] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState(null);
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiParseItems, setAiParseItems] = useState(null);
   const [weightInput, setWeightInput] = useState('');
   const [weightHistory, setWeightHistory] = useState([]);
   const [streaks, setStreaks] = useState(null);
@@ -176,10 +182,10 @@ export default function DailyTracker() {
   const shiftDay = (dir) => {
     const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() + dir);
-    setDate(d.toISOString().split('T')[0]);
+    setDate(getLocalDateStr(d));
   };
 
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === getLocalDateStr();
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
   // Group logs by meal type
@@ -212,7 +218,7 @@ export default function DailyTracker() {
       {/* Date navigator */}
       <div className="flex items-center justify-center gap-4">
         <button onClick={() => shiftDay(-1)} className="btn-ghost p-2"><ChevronLeft size={20} /></button>
-        <button onClick={() => setDate(new Date().toISOString().split('T')[0])} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isToday ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+        <button onClick={() => setDate(getLocalDateStr())} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isToday ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
           Today
         </button>
         <span className="font-semibold text-sm min-w-[140px] text-center">{dayName}</span>
@@ -447,13 +453,56 @@ export default function DailyTracker() {
                   )}
                 </div>
 
-                {/* Photo capture */}
+                {/* AI Estimate + Photo capture */}
                 <div className="flex gap-2">
+                  <button type="button" disabled={!quickAddForm.description.trim() || aiParsing || !!quickAddForm.calories}
+                    onClick={async () => {
+                      if (!quickAddForm.description.trim()) return;
+                      setAiParsing(true); setAiParseItems(null);
+                      try {
+                        const result = await api.aiParseFood(quickAddForm.description);
+                        setQuickAddForm({ ...quickAddForm, description: result.description || quickAddForm.description, calories: String(result.calories || ''), proteinG: String(result.protein || ''), carbsG: String(result.carbs || ''), fatG: String(result.fat || '') });
+                        if (result.items?.length > 1) setAiParseItems(result.items);
+                      } catch (err) { console.error(err); }
+                      finally { setAiParsing(false); }
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity disabled:opacity-40 flex-1 justify-center">
+                    <Sparkles size={15} /> {aiParsing ? 'Estimating...' : 'AI Estimate'}
+                  </button>
                   <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer flex-1 justify-center">
-                    📷 {analyzingPhoto ? 'Analyzing...' : 'Snap a Photo'}
-                    <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'quickAdd')} className="hidden" disabled={analyzingPhoto} />
+                    <Camera size={15} /> {analyzingPhoto ? 'Analyzing...' : 'Snap Photo'}
+                    <input type="file" accept="image/*" capture="environment" onChange={async (e) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      setAnalyzingPhoto(true);
+                      try {
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            const data = await api.aiAnalyzePhoto(reader.result);
+                            if (data.food) {
+                              setQuickAddForm({ ...quickAddForm, description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat) });
+                            } else { alert(data.details || 'Could not identify food. Try describing it instead.'); }
+                          } catch (err) { alert(err.message); }
+                          finally { setAnalyzingPhoto(false); }
+                        };
+                        reader.readAsDataURL(file);
+                      } catch { setAnalyzingPhoto(false); }
+                    }} className="hidden" disabled={analyzingPhoto} />
                   </label>
                 </div>
+
+                {/* AI breakdown of parsed items */}
+                {aiParseItems && aiParseItems.length > 1 && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 space-y-1">
+                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1"><Sparkles size={12} /> AI identified {aiParseItems.length} items:</p>
+                    {aiParseItems.map((item, i) => (
+                      <div key={i} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <span>{item.name}</span>
+                        <span className="text-gray-400">{item.calories} cal · {item.protein}g P</span>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
 
                 {/* Portion size picker */}
                 {quickAddForm.calories && (

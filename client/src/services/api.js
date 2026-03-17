@@ -241,6 +241,32 @@ class ApiService {
     return this.request('/ai/week-insights', { method: 'POST' });
   }
 
+  // ── New GenAI Features ──
+  aiParseFood(description) {
+    return this.request('/ai/parse-food', { method: 'POST', body: JSON.stringify({ description }) });
+  }
+  aiAnalyzePhoto(image) {
+    return this.request('/ai/analyze-photo', { method: 'POST', body: JSON.stringify({ image }) });
+  }
+  aiExplainPlan(planId) {
+    return this.request('/ai/explain-plan', { method: 'POST', body: JSON.stringify({ planId }) });
+  }
+  aiOptimizeGrocery(items, store, budget, organic) {
+    return this.request('/ai/optimize-grocery', { method: 'POST', body: JSON.stringify({ items, store, budget, organic }) });
+  }
+  aiPantryAlerts() {
+    return this.request('/ai/pantry-alerts');
+  }
+  aiRecipeEnhance(recipeId, type) {
+    return this.request('/ai/recipe-enhance', { method: 'POST', body: JSON.stringify({ recipeId, type }) });
+  }
+  aiMealPrep(planId) {
+    return this.request('/ai/meal-prep', { method: 'POST', body: JSON.stringify({ planId }) });
+  }
+  aiTrends() {
+    return this.request('/ai/trends', { method: 'POST' });
+  }
+
   // Family
   getFamily() {
     return this.request('/family');
