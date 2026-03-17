@@ -74,7 +74,24 @@ router.post('/generate', async (req, res) => {
     const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
       FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(planId);
 
-    res.json({ plan, items: items.map(i => ({ ...i, nutrition: parseJSON(i.nutrition, {}), ingredients: parseJSON(i.ingredients, []), instructions: parseJSON(i.instructions, []), locked: !!i.locked })) });
+    res.json({ plan, items: items.map(i => {
+      const sf = i.scale_factor || 1.0;
+      const nutrition = parseJSON(i.nutrition, {});
+      return {
+        ...i,
+        nutrition: {
+          calories: Math.round((nutrition.calories || 0) * sf),
+          protein: Math.round((nutrition.protein || 0) * sf),
+          carbs: Math.round((nutrition.carbs || 0) * sf),
+          fat: Math.round((nutrition.fat || 0) * sf),
+          fiber: Math.round((nutrition.fiber || 0) * sf),
+        },
+        ingredients: parseJSON(i.ingredients, []),
+        instructions: parseJSON(i.instructions, []),
+        locked: !!i.locked,
+        scale_factor: sf,
+      };
+    }) });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
