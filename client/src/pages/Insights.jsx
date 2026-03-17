@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame } from 'lucide-react';
 import { api } from '../services/api';
+import AiResultSheet, { AiCard, AiSection } from '../components/AiResultSheet';
 
 function MacroBar({ label, actual, target, color }) {
   const pct = target > 0 ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -29,6 +30,7 @@ export default function Insights() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [streaks, setStreaks] = useState(null);
+  const [aiSheet, setAiSheet] = useState({ open: false, data: null, loading: false });
 
   useEffect(() => { loadInsights(); loadStreaks(); }, []);
 
@@ -142,13 +144,11 @@ export default function Insights() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm flex items-center gap-2">📈 Multi-Week Trends</h3>
           <button onClick={async () => {
+            setAiSheet({ open: true, data: null, loading: true });
             try {
               const result = await api.aiTrends();
-              if (result.summary && !result.patterns?.length) { alert(result.summary); return; }
-              const patterns = result.patterns?.map(p => `• ${p}`).join('\n') || '';
-              const predictions = result.predictions?.map(p => `🔮 ${p}`).join('\n') || '';
-              alert(`📈 Trend Analysis\n\n${result.summary}\n\nPatterns:\n${patterns}\n\nPredictions:\n${predictions}`);
-            } catch (err) { alert(err.message); }
+              setAiSheet({ open: true, data: result, loading: false });
+            } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
           }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
             ✨ Analyze Trends
           </button>
@@ -210,6 +210,34 @@ export default function Insights() {
           )}
         </motion.div>
       )}
+
+      {/* AI Trend Analysis Sheet */}
+      <AiResultSheet
+        open={aiSheet.open}
+        onClose={() => setAiSheet({ open: false, data: null, loading: false })}
+        loading={aiSheet.loading}
+        title="Trend Analysis"
+        emoji="📈"
+        gradient="from-indigo-500 to-purple-500"
+      >
+        {aiSheet.data?.error ? (
+          <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
+        ) : aiSheet.data ? (
+          <>
+            {aiSheet.data.summary && <AiCard icon="📊" title="Summary">{aiSheet.data.summary}</AiCard>}
+            {aiSheet.data.patterns?.length > 0 && (
+              <AiSection title="Patterns Detected">
+                {aiSheet.data.patterns.map((p, i) => <AiCard key={i} icon="🔍">{p}</AiCard>)}
+              </AiSection>
+            )}
+            {aiSheet.data.predictions?.length > 0 && (
+              <AiSection title="Predictions">
+                {aiSheet.data.predictions.map((p, i) => <AiCard key={i} icon="🔮">{p}</AiCard>)}
+              </AiSection>
+            )}
+          </>
+        ) : null}
+      </AiResultSheet>
     </div>
   );
 }

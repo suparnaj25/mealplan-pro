@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Check, ExternalLink, Copy, CheckCheck, Zap, X, ArrowRight, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
+import AiResultSheet, { AiCard, AiSection, AiSwapCard, AiTag } from '../components/AiResultSheet';
 
 const STORES = [
   { id: 'amazon_wholefoods', name: 'Amazon / Whole Foods', icon: '🛒', url: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=wholefoods` },
@@ -46,6 +47,7 @@ export default function GroceryList() {
   const [expandedItem, setExpandedItem] = useState(null);
   const [editingQty, setEditingQty] = useState(null);
   const [editQtyValue, setEditQtyValue] = useState('');
+  const [aiSheet, setAiSheet] = useState({ open: false, data: null, loading: false });
   const storeDropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -192,14 +194,12 @@ export default function GroceryList() {
             </p>
             {needToBuy.length > 0 && (
               <button onClick={async () => {
+                setAiSheet({ open: true, data: null, loading: true });
                 try {
                   const itemNames = needToBuy.map(i => i.ingredient_name || i.name);
                   const result = await api.aiOptimizeGrocery(itemNames);
-                  const staples = result.pantryStaples?.length ? `\n\n🏠 You probably already have:\n${result.pantryStaples.join(', ')}` : '';
-                  const tips = result.budgetTips?.map(t => `💰 ${t.original} → ${t.swap} (save ${t.savings})`).join('\n') || '';
-                  const seasonal = result.seasonalPicks?.length ? `\n\n🌿 In season: ${result.seasonalPicks.join(', ')}` : '';
-                  alert(`🛒 AI Shopping Tips\n\n💰 Est. total: ${result.estimatedTotal || 'N/A'}${staples}\n\n${tips}${seasonal}`);
-                } catch (err) { alert(err.message); }
+                  setAiSheet({ open: true, data: result, loading: false });
+                } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
               }} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
                 ✨ AI Shopping Tips
               </button>
@@ -485,6 +485,47 @@ export default function GroceryList() {
           </div>
         </motion.div>
       ))}
+
+      {/* AI Shopping Tips Sheet */}
+      <AiResultSheet
+        open={aiSheet.open}
+        onClose={() => setAiSheet({ open: false, data: null, loading: false })}
+        loading={aiSheet.loading}
+        title="Smart Shopping Tips"
+        emoji="🛒"
+        gradient="from-emerald-500 to-teal-500"
+      >
+        {aiSheet.data?.error ? (
+          <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
+        ) : aiSheet.data ? (
+          <>
+            {aiSheet.data.estimatedTotal && (
+              <AiCard icon="💰" title="Estimated Total" highlight>{aiSheet.data.estimatedTotal}</AiCard>
+            )}
+            {aiSheet.data.budgetTips?.length > 0 && (
+              <AiSection title="Budget-Friendly Swaps">
+                {aiSheet.data.budgetTips.map((t, i) => (
+                  <AiSwapCard key={i} original={t.original} replacement={t.swap} reason={t.note} impact={`Save ${t.savings}`} />
+                ))}
+              </AiSection>
+            )}
+            {aiSheet.data.pantryStaples?.length > 0 && (
+              <AiSection title="You Probably Already Have">
+                <div className="flex flex-wrap gap-1.5">
+                  {aiSheet.data.pantryStaples.map((s, i) => <AiTag key={i} color="green">{s}</AiTag>)}
+                </div>
+              </AiSection>
+            )}
+            {aiSheet.data.seasonalPicks?.length > 0 && (
+              <AiSection title="In Season Now">
+                <div className="flex flex-wrap gap-1.5">
+                  {aiSheet.data.seasonalPicks.map((s, i) => <AiTag key={i} color="amber">🌿 {s}</AiTag>)}
+                </div>
+              </AiSection>
+            )}
+          </>
+        ) : null}
+      </AiResultSheet>
     </div>
   );
 }

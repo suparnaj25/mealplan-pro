@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Package, Plus, Trash2, Edit3, X, AlertTriangle, ChefHat, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
+import AiResultSheet, { AiCard, AiSection } from '../components/AiResultSheet';
 
 const CATEGORIES = ['Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery & Bread', 'Grains & Pasta', 'Canned & Jarred', 'Frozen', 'Oils & Condiments', 'Spices & Seasonings', 'Nuts & Seeds', 'Snacks', 'Beverages', 'Other'];
 const UNITS = ['whole', 'lb', 'oz', 'cup', 'tbsp', 'tsp', 'can', 'bag', 'bottle', 'bunch', 'cloves', 'slices'];
@@ -75,6 +76,7 @@ export default function Pantry() {
     return d < new Date();
   };
 
+  const [aiSheet, setAiSheet] = useState({ open: false, data: null, loading: false });
   const [whatCanIMake, setWhatCanIMake] = useState(null);
   const [whatCanIMakeLoading, setWhatCanIMakeLoading] = useState(false);
 
@@ -107,14 +109,11 @@ export default function Pantry() {
             Pantry
           </h1>
           <button onClick={async () => {
+            setAiSheet({ open: true, data: null, loading: true });
             try {
               const result = await api.aiPantryAlerts();
-              if (result.tip && !result.alerts?.length) { alert(result.tip); return; }
-              const alerts = result.alerts?.map(a => `⚠️ ${a.name} — ${a.daysLeft} day${a.daysLeft !== 1 ? 's' : ''} left`).join('\n') || '';
-              const idea = result.mealIdea ? `\n\n🍳 Use-it-up recipe idea:\n${result.mealIdea}` : '';
-              const tip = result.tip ? `\n\n💡 ${result.tip}` : '';
-              alert(`🔔 Pantry Expiry Alerts\n\n${alerts}${idea}${tip}`);
-            } catch (err) { alert(err.message); }
+              setAiSheet({ open: true, data: result, loading: false });
+            } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
           }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
             🔔 Expiry Alerts
           </button>
@@ -236,6 +235,41 @@ export default function Pantry() {
           </motion.div>
         );
       })}
+
+      {/* AI Expiry Alerts Sheet */}
+      <AiResultSheet
+        open={aiSheet.open}
+        onClose={() => setAiSheet({ open: false, data: null, loading: false })}
+        loading={aiSheet.loading}
+        title="Pantry Expiry Alerts"
+        emoji="🔔"
+        gradient="from-amber-500 to-orange-500"
+      >
+        {aiSheet.data?.error ? (
+          <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
+        ) : aiSheet.data ? (
+          <>
+            {aiSheet.data.alerts?.length > 0 ? (
+              <AiSection title="Items Expiring Soon">
+                {aiSheet.data.alerts.map((a, i) => (
+                  <AiCard key={i} icon={a.daysLeft <= 1 ? '🔴' : a.daysLeft <= 3 ? '🟡' : '🟢'} title={a.name}>
+                    {a.daysLeft === 0 ? 'Expires today!' : a.daysLeft === 1 ? '1 day left' : `${a.daysLeft} days left`}
+                    {a.suggestion && <span className="block mt-1 text-brand-500">{a.suggestion}</span>}
+                  </AiCard>
+                ))}
+              </AiSection>
+            ) : (
+              <AiCard icon="✅" title="All Clear!" highlight>No items expiring soon. Your pantry is in great shape!</AiCard>
+            )}
+            {aiSheet.data.mealIdea && (
+              <AiCard icon="🍳" title="Use-It-Up Recipe" highlight>{aiSheet.data.mealIdea}</AiCard>
+            )}
+            {aiSheet.data.tip && (
+              <AiCard icon="💡" title="Storage Tip">{aiSheet.data.tip}</AiCard>
+            )}
+          </>
+        ) : null}
+      </AiResultSheet>
     </div>
   );
 }

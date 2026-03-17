@@ -16,6 +16,7 @@ import {
   Leaf,
 } from 'lucide-react';
 import { api } from '../services/api';
+import AiResultSheet, { AiCard, AiSection, AiSwapCard } from '../components/AiResultSheet';
 
 // Feature 9: Voice synthesis for cooking mode
 function useSpeech() {
@@ -149,7 +150,18 @@ export default function RecipeDetail() {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [substitutions, setSubstitutions] = useState(null);
   const [subsLoading, setSubsLoading] = useState(false);
+  const [aiSheet, setAiSheet] = useState({ open: false, type: null, data: null, loading: false });
   const { speak, stop, supported: voiceSupported } = useSpeech();
+
+  const openAiSheet = async (type) => {
+    setAiSheet({ open: true, type, data: null, loading: true });
+    try {
+      const result = await api.aiRecipeEnhance(recipe?.id || id, type);
+      setAiSheet({ open: true, type, data: result, loading: false });
+    } catch (err) {
+      setAiSheet({ open: true, type, data: { error: err.message }, loading: false });
+    }
+  };
 
   useEffect(() => {
     if (!recipe && id) {
@@ -500,35 +512,13 @@ export default function RecipeDetail() {
           {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🥬'}
           {subsLoading ? 'Finding alternatives...' : 'Swap ingredients'}
         </button>
-        <button onClick={async () => {
-          try {
-            const result = await api.aiRecipeEnhance(recipe?.id || id, 'cooking-tips');
-            const tips = result.tips?.map((t, i) => `${i+1}. ${typeof t === 'string' ? t : `${t.icon || ''} ${t.title}: ${t.detail}`}`).join('\n') || '';
-            const pro = result.proTip ? `\n\n⭐ Pro Tip: ${result.proTip}` : '';
-            alert(`👨‍🍳 Cooking Tips\n\n${tips}${pro}`);
-          } catch (err) { alert(err.message); }
-        }} className="btn-secondary text-xs flex items-center gap-1.5">
+        <button onClick={() => openAiSheet('cooking-tips')} className="btn-secondary text-xs flex items-center gap-1.5">
           👨‍🍳 Cooking Tips
         </button>
-        <button onClick={async () => {
-          try {
-            const result = await api.aiRecipeEnhance(recipe?.id || id, 'make-healthier');
-            const mods = result.modifications?.map((m, i) => `${i+1}. ${m.original} → ${m.swap} (${m.impact})`).join('\n') || '';
-            const summary = result.summary ? `\n\n${result.summary}` : '';
-            alert(`🥗 Healthier Version\n\n${mods}${summary}`);
-          } catch (err) { alert(err.message); }
-        }} className="btn-secondary text-xs flex items-center gap-1.5">
+        <button onClick={() => openAiSheet('make-healthier')} className="btn-secondary text-xs flex items-center gap-1.5">
           🥗 Make Healthier
         </button>
-        <button onClick={async () => {
-          try {
-            const result = await api.aiRecipeEnhance(recipe?.id || id, 'pairings');
-            const sides = result.sides?.map(s => `🥗 ${s.name} — ${s.why}`).join('\n') || '';
-            const drinks = result.beverages?.map(b => `🥂 ${b.name} — ${b.why}`).join('\n') || '';
-            const dessert = result.dessert ? `🍰 ${result.dessert.name} — ${result.dessert.why}` : '';
-            alert(`🍷 Pairings\n\nSides:\n${sides}\n\nBeverages:\n${drinks}\n\nDessert:\n${dessert}`);
-          } catch (err) { alert(err.message); }
-        }} className="btn-secondary text-xs flex items-center gap-1.5">
+        <button onClick={() => openAiSheet('pairings')} className="btn-secondary text-xs flex items-center gap-1.5">
           🍷 Pairings
         </button>
       </div>
@@ -752,6 +742,69 @@ export default function RecipeDetail() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AI Result Sheet */}
+      <AiResultSheet
+        open={aiSheet.open}
+        onClose={() => setAiSheet({ open: false, type: null, data: null, loading: false })}
+        loading={aiSheet.loading}
+        title={aiSheet.type === 'cooking-tips' ? 'Cooking Tips' : aiSheet.type === 'make-healthier' ? 'Make It Healthier' : 'Perfect Pairings'}
+        emoji={aiSheet.type === 'cooking-tips' ? '👨‍🍳' : aiSheet.type === 'make-healthier' ? '🥗' : '🍷'}
+        gradient={aiSheet.type === 'cooking-tips' ? 'from-orange-500 to-red-500' : aiSheet.type === 'make-healthier' ? 'from-green-500 to-emerald-500' : 'from-purple-500 to-pink-500'}
+      >
+        {aiSheet.data?.error ? (
+          <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
+        ) : aiSheet.type === 'cooking-tips' && aiSheet.data ? (
+          <>
+            {aiSheet.data.tips?.map((t, i) => (
+              <AiCard key={i} icon={typeof t === 'string' ? '💡' : (t.icon || '💡')} title={typeof t === 'string' ? `Tip ${i+1}` : t.title}>
+                {typeof t === 'string' ? t : t.detail}
+              </AiCard>
+            ))}
+            {aiSheet.data.proTip && (
+              <AiCard icon="⭐" title="Pro Tip" highlight>{aiSheet.data.proTip}</AiCard>
+            )}
+          </>
+        ) : aiSheet.type === 'make-healthier' && aiSheet.data ? (
+          <>
+            {aiSheet.data.summary && <AiCard icon="📝" title="Summary">{aiSheet.data.summary}</AiCard>}
+            <AiSection title="Modifications">
+              {aiSheet.data.modifications?.map((m, i) => (
+                <AiSwapCard key={i} original={m.original} replacement={m.swap} reason={m.tasteImpact ? `Taste impact: ${m.tasteImpact}` : ''} impact={m.impact} />
+              ))}
+            </AiSection>
+            {aiSheet.data.nutritionSavings && (
+              <AiCard icon="📊" title="Nutrition Savings" highlight>
+                {aiSheet.data.nutritionSavings.calories && `${aiSheet.data.nutritionSavings.calories} cal`}
+                {aiSheet.data.nutritionSavings.fat && ` · ${aiSheet.data.nutritionSavings.fat}g fat`}
+                {aiSheet.data.nutritionSavings.protein && ` · ${aiSheet.data.nutritionSavings.protein}g protein`}
+              </AiCard>
+            )}
+          </>
+        ) : aiSheet.type === 'pairings' && aiSheet.data ? (
+          <>
+            {aiSheet.data.sides?.length > 0 && (
+              <AiSection title="Side Dishes">
+                {aiSheet.data.sides.map((s, i) => (
+                  <AiCard key={i} icon="🥗" title={s.name}>{s.why}</AiCard>
+                ))}
+              </AiSection>
+            )}
+            {aiSheet.data.beverages?.length > 0 && (
+              <AiSection title="Beverages">
+                {aiSheet.data.beverages.map((b, i) => (
+                  <AiCard key={i} icon="🥂" title={b.name}>{b.why}</AiCard>
+                ))}
+              </AiSection>
+            )}
+            {aiSheet.data.dessert && (
+              <AiSection title="Dessert">
+                <AiCard icon="🍰" title={aiSheet.data.dessert.name}>{aiSheet.data.dessert.why}</AiCard>
+              </AiSection>
+            )}
+          </>
+        ) : null}
+      </AiResultSheet>
     </div>
   );
 }
