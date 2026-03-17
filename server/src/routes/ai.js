@@ -398,6 +398,47 @@ router.post('/meal-prep', async (req, res) => {
   }
 });
 
+// POST /api/ai/actionable-swaps — Feature 10: Actionable meal swap suggestions
+router.post('/actionable-swaps', async (req, res) => {
+  try {
+    const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id);
+    const targets = macros ? { calories: macros.calories || 2000, protein: macros.protein_g || 150, carbs: macros.carbs_g || 200, fat: macros.fat_g || 67 } : { calories: 2000, protein: 150, carbs: 200, fat: 67 };
+
+    // Get this week's meal logs
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1);
+    const wsStr = weekStart.toISOString().split('T')[0];
+
+    const logs = db.prepare(`SELECT * FROM meal_logs WHERE user_id = ? AND date >= ? ORDER BY date, meal_type`).all(req.user.id, wsStr);
+
+    // Get last week's logs for comparison
+    const prevWeekStart = new Date(weekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const pwsStr = prevWeekStart.toISOString().split('T')[0];
+    const prevLogs = db.prepare(`SELECT * FROM meal_logs WHERE user_id = ? AND date >= ? AND date < ? ORDER BY date`).all(req.user.id, pwsStr, wsStr);
+
+    // Get planned meals
+    const plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(req.user.id);
+    let planItems = [];
+    if (plan) {
+      planItems = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.nutrition FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(plan.id);
+    }
+
+    const weekData = {
+      currentWeekLogs: logs.map(l => ({ date: l.date, meal: l.meal_type, description: l.actual_description || l.recipe_name, calories: l.calories, protein: l.protein_g, carbs: l.carbs_g, fat: l.fat_g })),
+      previousWeekLogs: prevLogs.map(l => ({ date: l.date, meal: l.meal_type, calories: l.calories, protein: l.protein_g, carbs: l.carbs_g, fat: l.fat_g })),
+      plannedMeals: planItems.map(i => ({ day: i.day_of_week, meal: i.meal_type, name: i.recipe_name, nutrition: (() => { try { return JSON.parse(i.nutrition); } catch { return {}; } })() }))
+    };
+
+    const result = await ai.getActionableSwaps(weekData, targets);
+    res.json(result);
+  } catch (error) {
+    console.error('Actionable swaps error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/ai/trends — Multi-week trend analysis
 router.post('/trends', async (req, res) => {
   try {

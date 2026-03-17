@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate } from 'react-router-dom';
@@ -30,7 +30,26 @@ export default function MealPlan() {
   const [showGenModal, setShowGenModal] = useState(false);
   const [genMealTypes, setGenMealTypes] = useState({ breakfast: true, lunch: true, dinner: true, snacks: false });
   const [aiSheet, setAiSheet] = useState({ open: false, type: null, data: null, loading: false });
+  const [feedbackMap, setFeedbackMap] = useState({}); // { recipeId: 'loved'|'liked'|'ok'|'disliked' }
   const navigate = useNavigate();
+
+  // Load existing feedback
+  useEffect(() => {
+    api.getFeedback().then(data => {
+      const map = {};
+      (data.feedback || []).forEach(f => { map[f.recipe_id] = f.reaction; });
+      setFeedbackMap(map);
+    }).catch(() => {});
+  }, []);
+
+  const handleFeedback = async (recipeId, recipeName, reaction) => {
+    const current = feedbackMap[recipeId];
+    const newReaction = current === reaction ? null : reaction; // toggle off if same
+    setFeedbackMap(prev => ({ ...prev, [recipeId]: newReaction }));
+    try {
+      await api.submitFeedback(recipeId, recipeName, newReaction, null, newReaction !== 'disliked');
+    } catch (err) { console.error(err); }
+  };
 
   useEffect(() => { loadPlan(); }, [weekStart]);
   
@@ -317,6 +336,29 @@ export default function MealPlan() {
                       )}
                       <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         See recipe details →
+                      </div>
+                      {/* Taste feedback reactions */}
+                      <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[10px] text-gray-400 mr-1">Rate:</span>
+                        {[
+                          { reaction: 'loved', emoji: '😍', label: 'Loved it' },
+                          { reaction: 'liked', emoji: '👍', label: 'Liked it' },
+                          { reaction: 'ok', emoji: '😐', label: 'It was ok' },
+                          { reaction: 'disliked', emoji: '👎', label: 'Not for me' },
+                        ].map(({ reaction, emoji, label }) => (
+                          <button
+                            key={reaction}
+                            onClick={() => handleFeedback(item.recipe_id, item.recipe_name, reaction)}
+                            title={label}
+                            className={`text-base p-0.5 rounded transition-all ${
+                              feedbackMap[item.recipe_id] === reaction
+                                ? 'scale-125 ring-2 ring-brand-500 ring-offset-1 bg-brand-50 dark:bg-brand-900/30'
+                                : 'opacity-40 hover:opacity-100 hover:scale-110'
+                            }`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
                       </div>
                       </div>
                     </div>
