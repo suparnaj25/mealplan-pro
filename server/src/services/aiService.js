@@ -544,6 +544,323 @@ Consider their age, weight, height, activity level, and goals. Use evidence-base
   return JSON.parse(response);
 }
 
+// ── Feature: Analyze Food Photo (Vision) ──
+async function analyzePhoto(base64Image) {
+  if (!isConfigured()) throw new Error('AI not configured. Set OPENAI_API_KEY in environment.');
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are a nutrition expert analyzing food photos. Identify the food and estimate its nutrition. Return JSON:
+{
+  "food": {
+    "name": "descriptive name of the food",
+    "calories": 450,
+    "protein": 25,
+    "carbs": 40,
+    "fat": 18
+  },
+  "confidence": "high|medium|low",
+  "details": "Brief description of what you see"
+}
+If you cannot identify food in the image, return: {"food": null, "confidence": "low", "details": "reason"}`
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What food is in this photo? Estimate the nutrition per serving.' },
+        { type: 'image_url', image_url: { url: base64Image } }
+      ]
+    }
+  ];
+
+  const res = await fetch(`${OPENAI_BASE_URL()}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY()}` },
+    body: JSON.stringify({
+      model: process.env.OPENAI_VISION_MODEL || 'gpt-4o',
+      messages,
+      temperature: 0.3,
+      max_tokens: 500,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!res.ok) { const err = await res.text(); throw new Error(`Vision request failed (${res.status}): ${err}`); }
+  const data = await res.json();
+  return JSON.parse(data.choices[0].message.content);
+}
+
+// ── Feature: Natural Language Food Parsing ──
+async function parseFoodDescription(description) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a nutrition expert. Parse a natural language food description into structured nutrition data. Be accurate — use USDA-level estimates.
+
+Return JSON:
+{
+  "description": "cleaned up description",
+  "calories": 450,
+  "protein": 25,
+  "carbs": 40,
+  "fat": 18,
+  "items": [
+    {"name": "grilled chicken breast", "calories": 280, "protein": 42, "carbs": 0, "fat": 12},
+    {"name": "white rice (1 cup)", "calories": 170, "protein": 3, "carbs": 40, "fat": 0}
+  ],
+  "confidence": "high|medium|low"
+}`
+    },
+    {
+      role: 'user',
+      content: `Parse this food description and estimate nutrition: "${description}"`
+    }
+  ], { jsonMode: true, temperature: 0.2, maxTokens: 500 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Explain Meal Plan ──
+async function explainMealPlan(userId, planId) {
+  const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+
+  const items = db.prepare(`
+    SELECT mpi.day_of_week, mpi.meal_type, r.name, r.cuisine, r.nutrition, r.prep_time_minutes, r.cook_time_minutes
+    FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id
+    WHERE mpi.meal_plan_id = ?
+    ORDER BY mpi.day_of_week, mpi.meal_type
+  `).all(planId);
+
+  const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(userId);
+  const cuisines = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(userId);
+  const diets = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(userId);
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const planSummary = items.map(i => `${days[i.day_of_week]} ${i.meal_type}: ${i.name} (${i.cuisine || 'mixed'})`).join('\n');
+
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a friendly meal planning assistant. Write a warm, personalized 3-4 sentence summary explaining why this week's meal plan is great for the user. Mention cuisine variety, nutrition highlights, and any practical benefits (quick meals, batch-friendly, etc.). Use a conversational tone with 1-2 emojis. Return JSON:
+{
+  "summary": "Your personalized summary here",
+  "highlights": ["highlight 1", "highlight 2", "highlight 3"],
+  "weekTheme": "A fun 2-3 word theme for the week"
+}`
+    },
+    {
+      role: 'user',
+      content: `User's macro targets: ${macros ? `${macros.calories} cal, ${macros.protein_g}g protein` : '2000 cal, 150g protein'}
+Favorite cuisines: ${cuisines ? parseJSON(cuisines.favorite_cuisines, []).join(', ') : 'varied'}
+Dietary restrictions: ${diets ? parseJSON(diets.restrictions, []).join(', ') : 'none'}
+
+This week's plan:
+${planSummary}`
+    }
+  ], { jsonMode: true, temperature: 0.7, maxTokens: 400 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Smart Grocery Optimization ──
+async function optimizeGroceryList(items, userContext) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a smart grocery shopping assistant. Optimize a grocery list by merging similar items, flagging pantry staples most people already have, and suggesting budget-friendly swaps. Return JSON:
+{
+  "mergedItems": [
+    {"name": "tomatoes", "originalItems": ["diced tomatoes", "cherry tomatoes"], "quantity": "2 cans + 1 pint", "category": "Produce", "note": "merged similar items"}
+  ],
+  "pantryStaples": ["salt", "black pepper", "olive oil"],
+  "budgetTips": [
+    {"original": "pine nuts", "swap": "sunflower seeds", "savings": "~$4", "note": "Similar crunch, fraction of the cost"}
+  ],
+  "seasonalPicks": ["butternut squash", "apples"],
+  "estimatedTotal": "$75-90"
+}`
+    },
+    {
+      role: 'user',
+      content: `Optimize this grocery list for ${userContext.store || 'a typical grocery store'}.
+Budget preference: ${userContext.budget || 'moderate'}
+Organic preference: ${userContext.organic || 'no preference'}
+
+Items:
+${items.map(i => `- ${i.name}: ${i.quantity} ${i.unit} (${i.category})`).join('\n')}`
+    }
+  ], { jsonMode: true, temperature: 0.3, maxTokens: 1000 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Pantry Expiry Alerts ──
+async function pantryExpiryAlerts(pantryItems, userId) {
+  const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+
+  // Get some recipes for context
+  const recipes = db.prepare('SELECT name, ingredients, meal_type FROM recipes LIMIT 50').all();
+  const expiringNames = pantryItems.map(p => p.name).join(', ');
+
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a helpful kitchen assistant. The user has pantry items expiring soon. Suggest creative ways to use them up before they go bad. Be practical and encouraging. Return JSON:
+{
+  "alerts": [
+    {
+      "item": "avocados",
+      "daysLeft": 2,
+      "urgency": "high",
+      "emoji": "🥑",
+      "suggestion": "Make guacamole tonight — it's a crowd-pleaser and uses all 3 avocados",
+      "quickRecipe": "Mash avocados with lime, salt, cilantro, and diced onion"
+    }
+  ],
+  "mealIdea": "A creative meal that uses multiple expiring items together",
+  "tip": "A general food waste reduction tip"
+}`
+    },
+    {
+      role: 'user',
+      content: `These pantry items are expiring soon:
+${pantryItems.map(p => `- ${p.name}: ${p.quantity} ${p.unit}, expires ${p.expiry_date} (${p.daysLeft} days left)`).join('\n')}
+
+Suggest how to use them up!`
+    }
+  ], { jsonMode: true, temperature: 0.7, maxTokens: 800 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Recipe Cooking Tips & Enhancements ──
+async function getRecipeEnhancements(recipe, enhancementType) {
+  const prompts = {
+    'cooking-tips': {
+      system: `You are a friendly home cooking coach. Give 3-4 practical cooking tips for this recipe that will make it taste restaurant-quality. Return JSON:
+{
+  "tips": [
+    {"icon": "🔥", "title": "Sear first", "detail": "Get the pan smoking hot before adding the protein for a perfect crust"},
+    {"icon": "🧂", "title": "Season in layers", "detail": "Add salt at each step, not just at the end"}
+  ],
+  "proTip": "One advanced technique that elevates the dish"
+}`,
+      user: (r) => `Give cooking tips for: ${r.name}\nIngredients: ${r.ingredients}\nInstructions: ${r.instructions}`
+    },
+    'make-healthier': {
+      system: `You are a nutrition-focused chef. Suggest modifications to make this recipe healthier without sacrificing flavor. Return JSON:
+{
+  "modifications": [
+    {"original": "heavy cream", "swap": "cashew cream or light coconut milk", "impact": "Saves ~120 cal, removes dairy", "tasteImpact": "minimal"}
+  ],
+  "nutritionSavings": {"calories": -150, "fat": -12, "protein": 0},
+  "summary": "Brief summary of the healthier version"
+}`,
+      user: (r) => `Make this recipe healthier: ${r.name}\nIngredients: ${r.ingredients}\nNutrition: ${r.nutrition}`
+    },
+    'pairings': {
+      system: `You are a food and beverage pairing expert. Suggest what goes well with this dish. Return JSON:
+{
+  "sides": [{"name": "Roasted asparagus", "why": "The earthy flavor complements the richness"}],
+  "beverages": [{"name": "Sauvignon Blanc", "why": "Crisp acidity cuts through the richness"}, {"name": "Sparkling water with lemon", "why": "Refreshing non-alcoholic option"}],
+  "dessert": {"name": "Lemon sorbet", "why": "Light and palate-cleansing"}
+}`,
+      user: (r) => `Suggest pairings for: ${r.name} (${r.cuisine || 'mixed'} cuisine)\nKey ingredients: ${r.ingredients}`
+    }
+  };
+
+  const prompt = prompts[enhancementType];
+  if (!prompt) throw new Error('Unknown enhancement type');
+
+  const response = await chatCompletion([
+    { role: 'system', content: prompt.system },
+    { role: 'user', content: prompt.user(recipe) }
+  ], { jsonMode: true, temperature: 0.6, maxTokens: 600 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Meal Prep Guide ──
+async function generateMealPrepGuide(userId, planId) {
+  const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+
+  const items = db.prepare(`
+    SELECT mpi.day_of_week, mpi.meal_type, mpi.servings, r.name, r.ingredients, r.prep_time_minutes, r.cook_time_minutes, r.instructions
+    FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id
+    WHERE mpi.meal_plan_id = ?
+    ORDER BY mpi.day_of_week
+  `).all(planId);
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const planSummary = items.map(i => ({
+    day: days[i.day_of_week], meal: i.meal_type, name: i.name,
+    prepTime: i.prep_time_minutes, cookTime: i.cook_time_minutes,
+    ingredients: parseJSON(i.ingredients, []).map(ing => ing.name).join(', ')
+  }));
+
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a meal prep expert. Create a practical Sunday meal prep guide for the week's meals. Focus on what can be prepped ahead, batch-cooked, or stored. Be specific with times. Return JSON:
+{
+  "totalPrepTime": "2 hours 15 minutes",
+  "steps": [
+    {"order": 1, "time": "15 min", "icon": "🔪", "task": "Chop all vegetables for the week", "detail": "Dice onions, mince garlic, chop bell peppers. Store in separate containers.", "forMeals": ["Monday dinner", "Wednesday lunch"]},
+    {"order": 2, "time": "30 min", "icon": "🍚", "task": "Cook grains in bulk", "detail": "Make 4 cups rice and 2 cups quinoa. Portion into containers.", "forMeals": ["Tuesday lunch", "Thursday dinner"]}
+  ],
+  "storageNotes": ["Cooked rice keeps 4 days in the fridge", "Pre-cut veggies last 3-4 days"],
+  "morningOf": [
+    {"day": "Wednesday", "task": "Thaw salmon in fridge the night before", "time": "1 min"}
+  ],
+  "tip": "A motivational meal prep tip"
+}`
+    },
+    {
+      role: 'user',
+      content: `Create a meal prep guide for this week:\n${JSON.stringify(planSummary, null, 2)}`
+    }
+  ], { jsonMode: true, temperature: 0.5, maxTokens: 1500 });
+
+  return JSON.parse(response);
+}
+
+// ── Feature: Multi-Week Trend Analysis ──
+async function analyzeTrends(weeklyData, targets) {
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a nutrition coach analyzing multi-week trends. Identify patterns, improvements, and areas of concern. Be encouraging but honest. Return JSON:
+{
+  "overallTrend": "improving|stable|declining",
+  "trendEmoji": "📈",
+  "summary": "2-3 sentence trend summary",
+  "patterns": [
+    {"icon": "📊", "pattern": "Your protein intake has improved 15% over 3 weeks", "type": "positive"},
+    {"icon": "⚠️", "pattern": "Weekend calorie intake is consistently 30% higher", "type": "warning"}
+  ],
+  "predictions": [
+    {"icon": "🎯", "prediction": "At this rate, you'll consistently hit protein targets within 2 weeks"}
+  ],
+  "correlations": [
+    {"insight": "Weeks where you meal-prepped on Sunday, you hit targets 5/7 days vs 3/7"}
+  ],
+  "weeklyGrades": [{"week": "Mar 3", "grade": "B+"}, {"week": "Mar 10", "grade": "A-"}],
+  "encouragement": "Motivational closing message"
+}`
+    },
+    {
+      role: 'user',
+      content: `Analyze these weekly nutrition trends against daily targets: ${JSON.stringify(targets)}
+
+Weekly data (most recent first):
+${JSON.stringify(weeklyData, null, 2)}`
+    }
+  ], { jsonMode: true, temperature: 0.5, maxTokens: 800 });
+
+  return JSON.parse(response);
+}
+
 module.exports = {
   isConfigured,
   chatCompletion,
@@ -560,4 +877,12 @@ module.exports = {
   calculateMealDistribution,
   interpretDietaryInput,
   calculatePersonalizedMacros,
+  analyzePhoto,
+  parseFoodDescription,
+  explainMealPlan,
+  optimizeGroceryList,
+  pantryExpiryAlerts,
+  getRecipeEnhancements,
+  generateMealPrepGuide,
+  analyzeTrends,
 };

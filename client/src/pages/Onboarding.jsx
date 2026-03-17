@@ -156,8 +156,29 @@ export default function Onboarding() {
               <TagToggle items={ALLERGIES} selected={data.diets.allergies} onToggle={(a) => toggleArray('diets', 'allergies', a)} colorClass="tag-danger" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5">Custom Diet Notes</label>
-              <input type="text" value={data.diets.customDiet} onChange={(e) => updateData('diets', { customDiet: e.target.value })} className="input-field" placeholder="Any other dietary needs..." />
+              <label className="block text-sm font-medium mb-1.5">Describe your diet in your own words</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.diets.customDiet} onChange={(e) => updateData('diets', { customDiet: e.target.value })} className="input-field flex-1" placeholder="e.g. lactose intolerant, avoid nightshades" />
+                <button type="button" disabled={!data.diets.customDiet?.trim()} onClick={async () => {
+                  try {
+                    const result = await api.aiInterpretDiet(data.diets.customDiet);
+                    if (result.restrictions?.length) {
+                      const current = data.diets.restrictions || [];
+                      const merged = [...new Set([...current, ...result.restrictions])];
+                      updateData('diets', { restrictions: merged });
+                    }
+                    if (result.excludeIngredients?.length) {
+                      const current = data.ingredients?.dislikedIngredients || [];
+                      const merged = [...new Set([...current, ...result.excludeIngredients])];
+                      updateData('ingredients', { dislikedIngredients: merged });
+                    }
+                    if (result.interpretation) alert(`✨ Got it! ${result.interpretation}`);
+                  } catch (err) { console.error(err); }
+                }} className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity disabled:opacity-40 whitespace-nowrap">
+                  ✨ AI Interpret
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">AI will auto-select restrictions and ingredients to avoid based on your description</p>
             </div>
           </div>
         );
