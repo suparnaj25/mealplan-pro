@@ -30,7 +30,7 @@ export default function Insights() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [streaks, setStreaks] = useState(null);
-  const [aiSheet, setAiSheet] = useState({ open: false, data: null, loading: false });
+  const [aiSheet, setAiSheet] = useState({ open: false, type: null, data: null, loading: false });
 
   useEffect(() => { loadInsights(); loadStreaks(); }, []);
 
@@ -138,17 +138,35 @@ export default function Insights() {
         </motion.div>
       )}
 
+      {/* Actionable Swaps */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
+        className="glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm flex items-center gap-2">🔄 Smart Meal Swaps</h3>
+          <button onClick={async () => {
+            setAiSheet({ open: true, type: 'swaps', data: null, loading: true });
+            try {
+              const result = await api.aiActionableSwaps();
+              setAiSheet({ open: true, type: 'swaps', data: result, loading: false });
+            } catch (err) { setAiSheet({ open: true, type: 'swaps', data: { error: err.message }, loading: false }); }
+          }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-green-500 to-teal-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
+            ✨ Get Swap Ideas
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">AI suggests specific meal swaps to hit your macro targets + week-over-week comparison</p>
+      </motion.div>
+
       {/* Multi-Week Trend Analysis */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
         className="glass-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm flex items-center gap-2">📈 Multi-Week Trends</h3>
           <button onClick={async () => {
-            setAiSheet({ open: true, data: null, loading: true });
+            setAiSheet({ open: true, type: 'trends', data: null, loading: true });
             try {
               const result = await api.aiTrends();
-              setAiSheet({ open: true, data: result, loading: false });
-            } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
+              setAiSheet({ open: true, type: 'trends', data: result, loading: false });
+            } catch (err) { setAiSheet({ open: true, type: 'trends', data: { error: err.message }, loading: false }); }
           }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
             ✨ Analyze Trends
           </button>
@@ -211,30 +229,65 @@ export default function Insights() {
         </motion.div>
       )}
 
-      {/* AI Trend Analysis Sheet */}
+      {/* AI Result Sheet (Trends + Swaps) */}
       <AiResultSheet
         open={aiSheet.open}
-        onClose={() => setAiSheet({ open: false, data: null, loading: false })}
+        onClose={() => setAiSheet({ open: false, type: null, data: null, loading: false })}
         loading={aiSheet.loading}
-        title="Trend Analysis"
-        emoji="📈"
-        gradient="from-indigo-500 to-purple-500"
+        title={aiSheet.type === 'swaps' ? 'Smart Meal Swaps' : 'Trend Analysis'}
+        emoji={aiSheet.type === 'swaps' ? '🔄' : '📈'}
+        gradient={aiSheet.type === 'swaps' ? 'from-green-500 to-teal-500' : 'from-indigo-500 to-purple-500'}
       >
         {aiSheet.data?.error ? (
           <AiCard icon="⚠️" title="Error">{aiSheet.data.error}</AiCard>
-        ) : aiSheet.data ? (
+        ) : aiSheet.type === 'swaps' && aiSheet.data ? (
+          <>
+            {aiSheet.data.topPriority && (
+              <AiCard icon="🎯" title="Top Priority" highlight>{aiSheet.data.topPriority}</AiCard>
+            )}
+            {aiSheet.data.weekOverWeek && (
+              <AiCard icon={aiSheet.data.weekOverWeek.trend === 'improving' ? '📈' : aiSheet.data.weekOverWeek.trend === 'declining' ? '📉' : '➡️'} title="Week-over-Week">
+                {aiSheet.data.weekOverWeek.summary}
+                {aiSheet.data.weekOverWeek.caloriesTrend && <div className="text-xs mt-1 text-gray-500">Calories: {aiSheet.data.weekOverWeek.caloriesTrend}</div>}
+                {aiSheet.data.weekOverWeek.proteinTrend && <div className="text-xs text-gray-500">Protein: {aiSheet.data.weekOverWeek.proteinTrend}</div>}
+              </AiCard>
+            )}
+            {aiSheet.data.swaps?.length > 0 && (
+              <AiSection title="Suggested Swaps">
+                {aiSheet.data.swaps.map((s, i) => (
+                  <AiCard key={i} icon="🔄" title={s.day || `Swap ${i + 1}`}>
+                    <div className="text-xs text-red-400 line-through mb-1">{s.currentMeal}</div>
+                    <div className="text-sm font-medium text-green-600 dark:text-green-400">→ {s.suggestedSwap}</div>
+                    <div className="text-xs text-gray-500 mt-1">{s.issue}</div>
+                    <div className="text-xs font-semibold text-brand-500 mt-1">{s.impact}</div>
+                  </AiCard>
+                ))}
+              </AiSection>
+            )}
+            {aiSheet.data.quickFixes?.length > 0 && (
+              <AiSection title="Quick Fixes">
+                {aiSheet.data.quickFixes.map((f, i) => (
+                  <AiCard key={i} icon={f.icon || '⚡'} title={f.action}>
+                    <span className="text-xs font-semibold text-green-500">{f.impact}</span>
+                  </AiCard>
+                ))}
+              </AiSection>
+            )}
+          </>
+        ) : aiSheet.type === 'trends' && aiSheet.data ? (
           <>
             {aiSheet.data.summary && <AiCard icon="📊" title="Summary">{aiSheet.data.summary}</AiCard>}
             {aiSheet.data.patterns?.length > 0 && (
               <AiSection title="Patterns Detected">
-                {aiSheet.data.patterns.map((p, i) => <AiCard key={i} icon="🔍">{p}</AiCard>)}
+                {aiSheet.data.patterns.map((p, i) => <AiCard key={i} icon="🔍">{typeof p === 'string' ? p : p.pattern}</AiCard>)}
               </AiSection>
             )}
             {aiSheet.data.predictions?.length > 0 && (
               <AiSection title="Predictions">
-                {aiSheet.data.predictions.map((p, i) => <AiCard key={i} icon="🔮">{p}</AiCard>)}
+                {aiSheet.data.predictions.map((p, i) => <AiCard key={i} icon="🔮">{typeof p === 'string' ? p : p.prediction}</AiCard>)}
               </AiSection>
             )}
+            {aiSheet.data.encouragement && <AiCard icon="💪" title="Keep Going!">{aiSheet.data.encouragement}</AiCard>}
           </>
         ) : null}
       </AiResultSheet>

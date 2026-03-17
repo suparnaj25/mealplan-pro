@@ -244,6 +244,21 @@ try {
   `); } catch(e) { /* tables already exist */ }
   // Add family_id to users for quick lookup
   try { db.exec('ALTER TABLE users ADD COLUMN family_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Feature 9: Family taste learning — meal feedback per user
+  try { db.exec(`
+    CREATE TABLE IF NOT EXISTS meal_feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      recipe_id TEXT REFERENCES recipes(id) ON DELETE CASCADE,
+      recipe_name TEXT,
+      rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+      reaction TEXT CHECK (reaction IN ('loved', 'liked', 'ok', 'disliked', 'skipped')),
+      would_eat_again INTEGER DEFAULT 1,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, recipe_id)
+    );
+  `); } catch(e) { /* table already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

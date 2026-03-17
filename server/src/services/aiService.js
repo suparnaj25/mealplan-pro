@@ -878,6 +878,87 @@ ${JSON.stringify(weeklyData, null, 2)}`
   return JSON.parse(response);
 }
 
+// Feature 9: Analyze family taste preferences from feedback data
+async function analyzeFamilyTastes(familyFeedback) {
+  if (!isConfigured()) return { summary: 'AI not configured', memberProfiles: [] };
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are a family meal planning AI. Analyze meal feedback from family members to identify taste patterns and preferences. Return JSON with:
+{
+  "summary": "Brief overview of family eating patterns",
+  "memberProfiles": [
+    {
+      "name": "Member name",
+      "userId": "id",
+      "lovedCuisines": ["Italian", "Mexican"],
+      "dislikedFoods": ["fish", "mushrooms"],
+      "patterns": "Prefers quick meals, loves spicy food",
+      "satisfactionScore": 85
+    }
+  ],
+  "familyFavorites": ["Recipe names everyone loved"],
+  "avoidForFamily": ["Recipe names someone disliked"],
+  "suggestions": ["Actionable suggestions for next week's plan"],
+  "conflictResolution": "How to handle differing tastes (e.g., make fish on nights when the fish-hater has plans)"
+}`
+    },
+    {
+      role: 'user',
+      content: `Family meal feedback data:\n${JSON.stringify(familyFeedback, null, 2)}`
+    }
+  ];
+
+  const result = await chatCompletion(messages, { response_format: { type: 'json_object' } });
+  try { return JSON.parse(result); } catch { return { summary: result, memberProfiles: [] }; }
+}
+
+// Feature 10: Enhanced insights with actionable swap suggestions
+async function getActionableSwaps(weekData, targets) {
+  if (!isConfigured()) return { swaps: [], quickFixes: [] };
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are a nutrition coach AI. Given a user's weekly meal data and their macro targets, suggest specific actionable swaps they can make to improve their nutrition. Return JSON:
+{
+  "swaps": [
+    {
+      "currentMeal": "What they're eating",
+      "day": "Monday lunch",
+      "issue": "Too high in carbs, low protein",
+      "suggestedSwap": "Specific replacement meal",
+      "impact": "+15g protein, -20g carbs",
+      "difficulty": "easy"
+    }
+  ],
+  "quickFixes": [
+    {
+      "action": "Add a protein shake after workouts",
+      "impact": "+25g protein daily",
+      "icon": "💪"
+    }
+  ],
+  "weekOverWeek": {
+    "trend": "improving" | "declining" | "stable",
+    "caloriesTrend": "+50 cal/day vs last week",
+    "proteinTrend": "-5g/day vs last week",
+    "summary": "You're eating 200 more calories this week, mostly from snacks"
+  },
+  "topPriority": "The single most impactful change they could make"
+}`
+    },
+    {
+      role: 'user',
+      content: `Weekly data:\n${JSON.stringify(weekData, null, 2)}\n\nTargets:\n${JSON.stringify(targets, null, 2)}`
+    }
+  ];
+
+  const result = await chatCompletion(messages, { response_format: { type: 'json_object' } });
+  try { return JSON.parse(result); } catch { return { swaps: [], quickFixes: [], topPriority: result }; }
+}
+
 module.exports = {
   isConfigured,
   chatCompletion,
@@ -902,4 +983,6 @@ module.exports = {
   getRecipeEnhancements,
   generateMealPrepGuide,
   analyzeTrends,
+  analyzeFamilyTastes,
+  getActionableSwaps,
 };

@@ -128,4 +128,90 @@ router.post('/leave', (req, res) => {
   }
 });
 
+// ── Feature 9: Meal Feedback (rate/react to meals) ──
+
+// POST /api/family/feedback — submit feedback for a recipe
+router.post('/feedback', (req, res) => {
+  try {
+    const { recipeId, recipeName, rating, reaction, wouldEatAgain, notes } = req.body;
+    if (!recipeId) return res.status(400).json({ error: 'recipeId required' });
+
+    const existing = db.prepare('SELECT id FROM meal_feedback WHERE user_id = ? AND recipe_id = ?').get(req.user.id, recipeId);
+    
+    if (existing) {
+      db.prepare(`UPDATE meal_feedback SET rating = ?, reaction = ?, would_eat_again = ?, notes = ?, recipe_name = ? WHERE id = ?`)
+        .run(rating || null, reaction || null, wouldEatAgain !== undefined ? (wouldEatAgain ? 1 : 0) : 1, notes || null, recipeName || null, existing.id);
+      const updated = db.prepare('SELECT * FROM meal_feedback WHERE id = ?').get(existing.id);
+      res.json({ feedback: updated, updated: true });
+    } else {
+      const id = require('uuid').v4();
+      db.prepare(`INSERT INTO meal_feedback (id, user_id, recipe_id, recipe_name, rating, reaction, would_eat_again, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, req.user.id, recipeId, recipeName || null, rating || null, reaction || null, wouldEatAgain !== undefined ? (wouldEatAgain ? 1 : 0) : 1, notes || null);
+      const created = db.prepare('SELECT * FROM meal_feedback WHERE id = ?').get(id);
+      res.json({ feedback: created, created: true });
+    }
+  } catch (error) {
+    console.error('Submit feedback error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/family/feedback — get all feedback for current user
+router.get('/feedback', (req, res) => {
+  try {
+    const feedback = db.prepare('SELECT * FROM meal_feedback WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+    res.json({ feedback });
+  } catch (error) {
+    console.error('Get feedback error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/family/feedback/:recipeId — get feedback for a specific recipe
+router.get('/feedback/:recipeId', (req, res) => {
+  try {
+    const feedback = db.prepare('SELECT * FROM meal_feedback WHERE user_id = ? AND recipe_id = ?').get(req.user.id, req.params.recipeId);
+    res.json({ feedback: feedback || null });
+  } catch (error) {
+    console.error('Get recipe feedback error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/family/taste-profile — AI analysis of family taste preferences
+router.get('/taste-profile', async (req, res) => {
+  try {
+    const user = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    
+    let feedbackData;
+    if (user?.family_id) {
+      // Get feedback from all family members
+      const members = db.prepare(`
+        SELECT fm.user_id, u.name FROM family_members fm JOIN users u ON u.id = fm.user_id WHERE fm.family_id = ?
+      `).all(user.family_id);
+      
+      feedbackData = members.map(m => {
+        const fb = db.prepare('SELECT * FROM meal_feedback WHERE user_id = ? ORDER BY created_at DESC').all(m.user_id);
+        return { name: m.name, userId: m.user_id, feedback: fb };
+      });
+    } else {
+      // Solo user
+      const fb = db.prepare('SELECT * FROM meal_feedback WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+      feedbackData = [{ name: user?.name || 'You', userId: req.user.id, feedback: fb }];
+    }
+
+    const totalFeedback = feedbackData.reduce((sum, m) => sum + m.feedback.length, 0);
+    if (totalFeedback === 0) {
+      return res.json({ summary: 'No meal feedback yet! Rate some meals to get personalized taste insights.', memberProfiles: [], familyFavorites: [], suggestions: [] });
+    }
+
+    const ai = require('../services/aiService');
+    const result = await ai.analyzeFamilyTastes(feedbackData);
+    res.json(result);
+  } catch (error) {
+    console.error('Taste profile error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

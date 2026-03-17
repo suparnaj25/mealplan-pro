@@ -227,6 +227,20 @@ export default function Settings() {
             </div>
           ))}
         </div>
+        {/* AI Taste Profile */}
+        <button onClick={async () => {
+          try {
+            const result = await api.getTasteProfile();
+            if (result.summary && !result.memberProfiles?.length) { alert(result.summary); return; }
+            const profiles = result.memberProfiles?.map(p => `👤 ${p.name}: ${p.patterns || 'No data yet'} (${p.satisfactionScore || '?'}% happy)`).join('\n') || '';
+            const favs = result.familyFavorites?.join(', ') || 'None yet';
+            const suggestions = result.suggestions?.map(s => `💡 ${s}`).join('\n') || '';
+            alert(`👨‍👩‍👧‍👦 Family Taste Profile\n\n${result.summary}\n\n${profiles}\n\n⭐ Family Favorites: ${favs}\n\n${suggestions}`);
+          } catch (err) { alert(err.message); }
+        }} className="btn-secondary text-xs flex items-center gap-1 w-full justify-center">
+          ✨ AI Taste Profile
+        </button>
+
         <button onClick={handleLeave} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1">
           <LeaveIcon size={12} /> Leave family
         </button>

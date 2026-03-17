@@ -280,6 +280,23 @@ class ApiService {
   leaveFamily() {
     return this.request('/family/leave', { method: 'POST' });
   }
+  // Feature 9: Meal feedback
+  submitFeedback(recipeId, recipeName, reaction, rating, wouldEatAgain) {
+    return this.request('/family/feedback', { method: 'POST', body: JSON.stringify({ recipeId, recipeName, reaction, rating, wouldEatAgain }) });
+  }
+  getFeedback() {
+    return this.request('/family/feedback');
+  }
+  getRecipeFeedback(recipeId) {
+    return this.request(`/family/feedback/${recipeId}`);
+  }
+  getTasteProfile() {
+    return this.request('/family/taste-profile');
+  }
+  // Feature 10: Actionable swaps
+  aiActionableSwaps() {
+    return this.request('/ai/actionable-swaps', { method: 'POST' });
+  }
 }
 
 export const api = new ApiService();
