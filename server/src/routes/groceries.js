@@ -107,7 +107,6 @@ router.put('/:listId/items/:itemId', (req, res) => {
         db.prepare('UPDATE pantry_items SET quantity = ?, updated_at = datetime(\'now\') WHERE id = ?').run(newQty, existingPantry.id);
       } else {
         // Add new pantry item
-        const { v4: uuidv4 } = require('uuid');
         db.prepare('INSERT INTO pantry_items (id, user_id, name, quantity, unit, category) VALUES (?, ?, ?, ?, ?, ?)')
           .run(uuidv4(), req.user.id, item.name, item.quantity, item.unit, item.category || 'Other');
       }

@@ -48,8 +48,12 @@ function MacroBar({ label, value, target, color }) {
   );
 }
 
+function getLocalDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 export default function DailyTracker() {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateStr());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -176,10 +180,10 @@ export default function DailyTracker() {
   const shiftDay = (dir) => {
     const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() + dir);
-    setDate(d.toISOString().split('T')[0]);
+    setDate(getLocalDateStr(d));
   };
 
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === getLocalDateStr();
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
   // Group logs by meal type
@@ -212,7 +216,7 @@ export default function DailyTracker() {
       {/* Date navigator */}
       <div className="flex items-center justify-center gap-4">
         <button onClick={() => shiftDay(-1)} className="btn-ghost p-2"><ChevronLeft size={20} /></button>
-        <button onClick={() => setDate(new Date().toISOString().split('T')[0])} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isToday ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+        <button onClick={() => setDate(getLocalDateStr())} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isToday ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
           Today
         </button>
         <span className="font-semibold text-sm min-w-[140px] text-center">{dayName}</span>

@@ -172,7 +172,7 @@ export default function MealPlan() {
   };
 
   const weekDates = DAYS.map((_, i) => {
-    const d = new Date(weekStart);
+    const d = new Date(weekStart + 'T12:00:00');
     d.setDate(d.getDate() + i);
     return d;
   });

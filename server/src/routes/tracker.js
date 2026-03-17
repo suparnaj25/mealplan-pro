@@ -46,10 +46,10 @@ router.post('/sync-plan', (req, res) => {
     const jsDay = d.getDay(); // 0=Sun, 1=Mon...
     const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // Convert to 0=Mon
 
-    // Get the week start for this date
+    // Get the week start for this date (use local date components to avoid UTC shift)
     const weekStart = new Date(d);
     weekStart.setDate(d.getDate() - dayOfWeek);
-    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth()+1).padStart(2,'0')}-${String(weekStart.getDate()).padStart(2,'0')}`;
 
     // Find meal plan for this week
     const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStartStr);
@@ -138,7 +138,7 @@ router.get('/weekly', (req, res) => {
     for (let i = 0; i < 7; i++) {
       const d = new Date(startDate + 'T12:00:00');
       d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
       const logs = db.prepare('SELECT * FROM meal_logs WHERE user_id = ? AND date = ? AND (status = \'eaten\' OR status = \'modified\')').all(req.user.id, dateStr);
       const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -160,7 +160,6 @@ router.post('/weight', (req, res) => {
   try {
     const { date, weight, unit } = req.body;
     if (!date || !weight) return res.status(400).json({ error: 'date and weight required' });
-    const { v4: uuidv4 } = require('uuid');
     db.prepare('INSERT INTO daily_weight (id, user_id, date, weight, unit) VALUES (?,?,?,?,?) ON CONFLICT(user_id, date) DO UPDATE SET weight=?, unit=?')
       .run(uuidv4(), req.user.id, date, weight, unit || 'lb', weight, unit || 'lb');
     res.json({ success: true });
@@ -184,18 +183,19 @@ router.get('/streaks', (req, res) => {
     let currentStreak = 0;
     let longestStreak = 0;
     let tempStreak = 0;
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     
     for (let i = 0; i < logs.length; i++) {
       const logDate = logs[i].date;
       if (i === 0) {
         // Check if most recent log is today or yesterday
-        const diff = Math.floor((new Date(today) - new Date(logDate)) / (1000*60*60*24));
+        const diff = Math.floor((new Date(today + 'T12:00:00') - new Date(logDate + 'T12:00:00')) / (1000*60*60*24));
         if (diff > 1) break;
         tempStreak = 1;
       } else {
-        const prev = new Date(logs[i-1].date);
-        const curr = new Date(logDate);
+        const prev = new Date(logs[i-1].date + 'T12:00:00');
+        const curr = new Date(logDate + 'T12:00:00');
         const dayDiff = Math.floor((prev - curr) / (1000*60*60*24));
         if (dayDiff === 1) { tempStreak++; }
         else break;
@@ -203,8 +203,27 @@ router.get('/streaks', (req, res) => {
     }
     currentStreak = tempStreak;
 
+    // Calculate longest streak by scanning all logged dates
+    if (logs.length > 0) {
+      // logs are DESC, reverse for chronological order
+      const chronological = [...logs].reverse();
+      let streak = 1;
+      longestStreak = 1;
+      for (let i = 1; i < chronological.length; i++) {
+        const prev = new Date(chronological[i-1].date + 'T12:00:00');
+        const curr = new Date(chronological[i].date + 'T12:00:00');
+        const dayDiff = Math.floor((curr - prev) / (1000*60*60*24));
+        if (dayDiff === 1) { streak++; longestStreak = Math.max(longestStreak, streak); }
+        else { streak = 1; }
+      }
+    }
+
     // Count total logged days
     const totalDays = logs.length;
+
+    // Count total meals logged
+    const totalMealsRow = db.prepare("SELECT COUNT(*) as count FROM meal_logs WHERE user_id = ? AND status IN ('eaten', 'modified')").get(req.user.id);
+    const totalMeals = totalMealsRow?.count || 0;
     
     // Count days hitting protein target
     const macros = db.prepare('SELECT protein_g FROM user_macros WHERE user_id = ?').get(req.user.id);
@@ -215,9 +234,22 @@ router.get('/streaks', (req, res) => {
       proteinHitDays = last7.length;
     }
 
+    // Count weeks where average daily calories were within 15% of target
+    const calorieTarget = db.prepare('SELECT calories FROM user_macros WHERE user_id = ?').get(req.user.id)?.calories || 2000;
+    let weeklyGoalMet = 0;
+    const weeklyData = db.prepare("SELECT strftime('%Y-%W', date) as week, COUNT(DISTINCT date) as days, SUM(calories) as total_cal FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') GROUP BY week HAVING days >= 3").all(req.user.id);
+    for (const w of weeklyData) {
+      const avgCal = w.total_cal / w.days;
+      if (Math.abs(avgCal - calorieTarget) / calorieTarget <= 0.15) weeklyGoalMet++;
+    }
+
     res.json({
       currentStreak,
+      longestStreak,
       totalDays,
+      totalDaysLogged: totalDays,
+      totalMealsLogged: totalMeals,
+      weeklyGoalMet,
       proteinHitDays,
       achievements: [
         { id: 'first_log', name: 'First Log', icon: '🎉', earned: totalDays >= 1, desc: 'Logged your first meal' },
