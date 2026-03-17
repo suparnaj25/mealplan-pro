@@ -227,26 +227,70 @@ router.post('/week-insights', async (req, res) => {
     }
     forecast.days = actuals.days + remainingDays;
 
-    // Use AI to analyze
+    // Compute deviation percentages for deterministic grading
+    const computeGrade = (avg, target) => {
+      if (!target || target === 0) return 'B';
+      const pct = Math.abs(avg - target) / target;
+      if (pct <= 0.10) return 'A';
+      if (pct <= 0.20) return 'B';
+      if (pct <= 0.35) return 'C';
+      return 'D';
+    };
+
+    const avgActCal = actuals.days > 0 ? Math.round(actuals.calories / actuals.days) : 0;
+    const avgActProt = actuals.days > 0 ? Math.round(actuals.protein / actuals.days) : 0;
+    const avgActCarbs = actuals.days > 0 ? Math.round(actuals.carbs / actuals.days) : 0;
+    const avgActFat = actuals.days > 0 ? Math.round(actuals.fat / actuals.days) : 0;
+
+    const avgFcCal = forecast.days > 0 ? Math.round(forecast.calories / forecast.days) : 0;
+    const avgFcProt = forecast.days > 0 ? Math.round(forecast.protein / forecast.days) : 0;
+    const avgFcCarbs = forecast.days > 0 ? Math.round(forecast.carbs / forecast.days) : 0;
+    const avgFcFat = forecast.days > 0 ? Math.round(forecast.fat / forecast.days) : 0;
+
+    // Grade each macro individually, then take the worst as overall grade
+    const gradeOrder = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+    const worstGrade = (...grades) => grades.reduce((w, g) => gradeOrder[g] > gradeOrder[w] ? g : w, 'A');
+
+    const actualsGrade = actuals.days === 0 ? 'D' : worstGrade(
+      computeGrade(avgActCal, targets.calories),
+      computeGrade(avgActProt, targets.protein),
+      computeGrade(avgActCarbs, targets.carbs),
+      computeGrade(avgActFat, targets.fat)
+    );
+    const forecastGrade = forecast.days === 0 ? 'D' : worstGrade(
+      computeGrade(avgFcCal, targets.calories),
+      computeGrade(avgFcProt, targets.protein),
+      computeGrade(avgFcCarbs, targets.carbs),
+      computeGrade(avgFcFat, targets.fat)
+    );
+
+    // Use AI for summaries and tips only (grading is deterministic)
     const response = await ai.chatCompletion([
       {
         role: 'system',
-        content: `Analyze nutrition data and return JSON:
+        content: `You are a personal nutrition coach. The user has set THEIR OWN specific daily macro targets (not general guidelines). Grade and assess ONLY against THEIR targets.
+
+Return JSON:
 {
-  "actualsGrade": "A|B|C|D",
-  "actualsSummary": "Brief assessment of week-to-date",
-  "forecastGrade": "A|B|C|D",
-  "forecastSummary": "Brief forecast assessment",
-  "tips": ["tip1", "tip2"],
+  "actualsGrade": "${actualsGrade}",
+  "actualsSummary": "Brief assessment referencing their specific targets",
+  "forecastGrade": "${forecastGrade}",
+  "forecastSummary": "Brief forecast assessment referencing their specific targets",
+  "tips": ["actionable tip referencing their specific macro gaps", "tip2"],
   "encouragement": "Motivational message"
 }
-Grade based on proximity to daily targets: A=within 10%, B=20%, C=35%, D=>35%`
+
+IMPORTANT: The grades are pre-computed. Use exactly actualsGrade="${actualsGrade}" and forecastGrade="${forecastGrade}".
+Focus your summary on which specific macros are off-target and by how much.
+Grading criteria (against USER's personal targets): A=within 10%, B=within 20%, C=within 35%, D=>35% off.`
       },
       {
         role: 'user',
-        content: `Daily targets: ${JSON.stringify(targets)}
-Week-to-date actuals (${actuals.days} days logged): avg ${actuals.days > 0 ? Math.round(actuals.calories/actuals.days) : 0} cal, ${actuals.days > 0 ? Math.round(actuals.protein/actuals.days) : 0}g P, ${actuals.days > 0 ? Math.round(actuals.carbs/actuals.days) : 0}g C, ${actuals.days > 0 ? Math.round(actuals.fat/actuals.days) : 0}g F
-Forecast (${forecast.days} days, logged + planned): avg ${forecast.days > 0 ? Math.round(forecast.calories/forecast.days) : 0} cal, ${forecast.days > 0 ? Math.round(forecast.protein/forecast.days) : 0}g P, ${forecast.days > 0 ? Math.round(forecast.carbs/forecast.days) : 0}g C, ${forecast.days > 0 ? Math.round(forecast.fat/forecast.days) : 0}g F`
+        content: `THIS USER'S personal daily targets: ${targets.calories} cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat
+
+Week-to-date actuals (${actuals.days} days logged): avg ${avgActCal} cal (${targets.calories > 0 ? Math.round((avgActCal/targets.calories)*100) : 0}% of target), ${avgActProt}g P (${targets.protein > 0 ? Math.round((avgActProt/targets.protein)*100) : 0}%), ${avgActCarbs}g C (${targets.carbs > 0 ? Math.round((avgActCarbs/targets.carbs)*100) : 0}%), ${avgActFat}g F (${targets.fat > 0 ? Math.round((avgActFat/targets.fat)*100) : 0}%)
+
+Forecast (${forecast.days} days): avg ${avgFcCal} cal (${targets.calories > 0 ? Math.round((avgFcCal/targets.calories)*100) : 0}%), ${avgFcProt}g P (${targets.protein > 0 ? Math.round((avgFcProt/targets.protein)*100) : 0}%), ${avgFcCarbs}g C (${targets.carbs > 0 ? Math.round((avgFcCarbs/targets.carbs)*100) : 0}%), ${avgFcFat}g F (${targets.fat > 0 ? Math.round((avgFcFat/targets.fat)*100) : 0}%)`
       }
     ], { jsonMode: true, temperature: 0.3, maxTokens: 500 });
 
@@ -428,7 +472,11 @@ router.post('/actionable-swaps', async (req, res) => {
     const weekData = {
       currentWeekLogs: logs.map(l => ({ date: l.date, meal: l.meal_type, description: l.actual_description || l.recipe_name, calories: l.calories, protein: l.protein_g, carbs: l.carbs_g, fat: l.fat_g })),
       previousWeekLogs: prevLogs.map(l => ({ date: l.date, meal: l.meal_type, calories: l.calories, protein: l.protein_g, carbs: l.carbs_g, fat: l.fat_g })),
-      plannedMeals: planItems.map(i => ({ day: i.day_of_week, meal: i.meal_type, name: i.recipe_name, nutrition: (() => { try { return JSON.parse(i.nutrition); } catch { return {}; } })() }))
+      plannedMeals: planItems.map(i => {
+        const sf = i.scale_factor || 1.0;
+        const n = (() => { try { return JSON.parse(i.nutrition); } catch { return {}; } })();
+        return { day: i.day_of_week, meal: i.meal_type, name: i.recipe_name, nutrition: { calories: Math.round((n.calories || 0) * sf), protein: Math.round((n.protein || 0) * sf), carbs: Math.round((n.carbs || 0) * sf), fat: Math.round((n.fat || 0) * sf) } };
+      })
     };
 
     const result = await ai.getActionableSwaps(weekData, targets);
