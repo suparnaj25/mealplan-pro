@@ -119,7 +119,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* Main content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 pb-24 md:pb-6 md:ml-20">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 pb-28 md:pb-6 md:ml-20">
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 12 }}
@@ -130,10 +130,10 @@ export default function Layout() {
         </motion.div>
       </main>
 
-      {/* Bottom navigation (mobile) */}
-      <nav className="glass fixed bottom-0 left-0 right-0 z-50 md:hidden">
-        <div className="flex justify-around py-2">
-          {navItems.map(({ path, icon: Icon, label }) => {
+      {/* Bottom navigation (mobile) — show only 5 key items */}
+      <nav className="glass fixed bottom-0 left-0 right-0 z-50 md:hidden safe-area-bottom">
+        <div className="flex justify-around py-2 pb-[env(safe-area-inset-bottom)]">
+          {navItems.filter(n => ['/', '/tracker', '/groceries', '/pantry', '/insights'].includes(n.path)).map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path;
             return (
               <NavLink key={path} to={path}

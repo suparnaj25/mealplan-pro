@@ -366,7 +366,16 @@ router.post('/recipe-enhance', async (req, res) => {
     const recipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(recipeId);
     if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
-    const result = await ai.getRecipeEnhancements(recipe, type);
+    // Parse JSON fields from DB
+    const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+    const parsed = {
+      ...recipe,
+      ingredients: parseJSON(recipe.ingredients, []),
+      instructions: parseJSON(recipe.instructions, []),
+      nutrition: parseJSON(recipe.nutrition, {}),
+    };
+
+    const result = await ai.getRecipeEnhancements(parsed, type);
     res.json(result);
   } catch (error) {
     console.error('AI recipe-enhance error:', error.message);

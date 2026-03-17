@@ -688,7 +688,7 @@ Budget preference: ${userContext.budget || 'moderate'}
 Organic preference: ${userContext.organic || 'no preference'}
 
 Items:
-${items.map(i => `- ${i.name}: ${i.quantity} ${i.unit} (${i.category})`).join('\n')}`
+${items.map(i => typeof i === 'string' ? `- ${i}` : `- ${i.name}: ${i.quantity || ''} ${i.unit || ''} (${i.category || 'Other'})`).join('\n')}`
     }
   ], { jsonMode: true, temperature: 0.3, maxTokens: 1000 });
 
@@ -736,6 +736,23 @@ Suggest how to use them up!`
 
 // ── Feature: Recipe Cooking Tips & Enhancements ──
 async function getRecipeEnhancements(recipe, enhancementType) {
+  // Format ingredients/instructions for the prompt (handle both arrays and strings)
+  const fmtIngredients = (r) => {
+    if (Array.isArray(r.ingredients)) return r.ingredients.map(i => typeof i === 'string' ? i : i.name).join(', ');
+    if (typeof r.ingredients === 'string') return r.ingredients;
+    return 'Not available';
+  };
+  const fmtInstructions = (r) => {
+    if (Array.isArray(r.instructions)) return r.instructions.join('. ');
+    if (typeof r.instructions === 'string') return r.instructions;
+    return 'Not available';
+  };
+  const fmtNutrition = (r) => {
+    if (typeof r.nutrition === 'object' && r.nutrition) return JSON.stringify(r.nutrition);
+    if (typeof r.nutrition === 'string') return r.nutrition;
+    return 'Not available';
+  };
+
   const prompts = {
     'cooking-tips': {
       system: `You are a friendly home cooking coach. Give 3-4 practical cooking tips for this recipe that will make it taste restaurant-quality. Return JSON:
@@ -746,7 +763,7 @@ async function getRecipeEnhancements(recipe, enhancementType) {
   ],
   "proTip": "One advanced technique that elevates the dish"
 }`,
-      user: (r) => `Give cooking tips for: ${r.name}\nIngredients: ${r.ingredients}\nInstructions: ${r.instructions}`
+      user: (r) => `Give cooking tips for: ${r.name}\nIngredients: ${fmtIngredients(r)}\nInstructions: ${fmtInstructions(r)}`
     },
     'make-healthier': {
       system: `You are a nutrition-focused chef. Suggest modifications to make this recipe healthier without sacrificing flavor. Return JSON:
@@ -757,7 +774,7 @@ async function getRecipeEnhancements(recipe, enhancementType) {
   "nutritionSavings": {"calories": -150, "fat": -12, "protein": 0},
   "summary": "Brief summary of the healthier version"
 }`,
-      user: (r) => `Make this recipe healthier: ${r.name}\nIngredients: ${r.ingredients}\nNutrition: ${r.nutrition}`
+      user: (r) => `Make this recipe healthier: ${r.name}\nIngredients: ${fmtIngredients(r)}\nNutrition: ${fmtNutrition(r)}`
     },
     'pairings': {
       system: `You are a food and beverage pairing expert. Suggest what goes well with this dish. Return JSON:
@@ -766,7 +783,7 @@ async function getRecipeEnhancements(recipe, enhancementType) {
   "beverages": [{"name": "Sauvignon Blanc", "why": "Crisp acidity cuts through the richness"}, {"name": "Sparkling water with lemon", "why": "Refreshing non-alcoholic option"}],
   "dessert": {"name": "Lemon sorbet", "why": "Light and palate-cleansing"}
 }`,
-      user: (r) => `Suggest pairings for: ${r.name} (${r.cuisine || 'mixed'} cuisine)\nKey ingredients: ${r.ingredients}`
+      user: (r) => `Suggest pairings for: ${r.name} (${r.cuisine || 'mixed'} cuisine)\nKey ingredients: ${fmtIngredients(r)}`
     }
   };
 
