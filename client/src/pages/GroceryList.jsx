@@ -195,9 +195,10 @@ export default function GroceryList() {
                 try {
                   const itemNames = needToBuy.map(i => i.ingredient_name || i.name);
                   const result = await api.aiOptimizeGrocery(itemNames);
-                  const tips = result.tips?.join('\n💡 ') || '';
-                  const subs = result.substitutions?.map(s => `• ${s.original} → ${s.substitute} (${s.reason})`).join('\n') || '';
-                  alert(`🛒 AI Shopping Tips\n\n💰 Est. total: ${result.estimatedTotal || 'N/A'}\n\n💡 ${tips}\n\n🔄 Substitutions:\n${subs}`);
+                  const staples = result.pantryStaples?.length ? `\n\n🏠 You probably already have:\n${result.pantryStaples.join(', ')}` : '';
+                  const tips = result.budgetTips?.map(t => `💰 ${t.original} → ${t.swap} (save ${t.savings})`).join('\n') || '';
+                  const seasonal = result.seasonalPicks?.length ? `\n\n🌿 In season: ${result.seasonalPicks.join(', ')}` : '';
+                  alert(`🛒 AI Shopping Tips\n\n💰 Est. total: ${result.estimatedTotal || 'N/A'}${staples}\n\n${tips}${seasonal}`);
                 } catch (err) { alert(err.message); }
               }} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
                 ✨ AI Shopping Tips

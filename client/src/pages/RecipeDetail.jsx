@@ -503,7 +503,9 @@ export default function RecipeDetail() {
         <button onClick={async () => {
           try {
             const result = await api.aiRecipeEnhance(recipe?.id || id, 'cooking-tips');
-            alert(`👨‍🍳 Cooking Tips\n\n${result.tips?.map((t, i) => `${i+1}. ${t}`).join('\n') || result.content || 'No tips available'}`);
+            const tips = result.tips?.map((t, i) => `${i+1}. ${typeof t === 'string' ? t : `${t.icon || ''} ${t.title}: ${t.detail}`}`).join('\n') || '';
+            const pro = result.proTip ? `\n\n⭐ Pro Tip: ${result.proTip}` : '';
+            alert(`👨‍🍳 Cooking Tips\n\n${tips}${pro}`);
           } catch (err) { alert(err.message); }
         }} className="btn-secondary text-xs flex items-center gap-1.5">
           👨‍🍳 Cooking Tips
@@ -511,7 +513,9 @@ export default function RecipeDetail() {
         <button onClick={async () => {
           try {
             const result = await api.aiRecipeEnhance(recipe?.id || id, 'make-healthier');
-            alert(`🥗 Healthier Version\n\n${result.suggestions?.map((s, i) => `${i+1}. ${s}`).join('\n') || result.content || 'No suggestions'}`);
+            const mods = result.modifications?.map((m, i) => `${i+1}. ${m.original} → ${m.swap} (${m.impact})`).join('\n') || '';
+            const summary = result.summary ? `\n\n${result.summary}` : '';
+            alert(`🥗 Healthier Version\n\n${mods}${summary}`);
           } catch (err) { alert(err.message); }
         }} className="btn-secondary text-xs flex items-center gap-1.5">
           🥗 Make Healthier
@@ -519,7 +523,10 @@ export default function RecipeDetail() {
         <button onClick={async () => {
           try {
             const result = await api.aiRecipeEnhance(recipe?.id || id, 'pairings');
-            alert(`🍷 Pairings\n\n${result.pairings?.map((p, i) => `${i+1}. ${p}`).join('\n') || result.content || 'No pairings'}`);
+            const sides = result.sides?.map(s => `🥗 ${s.name} — ${s.why}`).join('\n') || '';
+            const drinks = result.beverages?.map(b => `🥂 ${b.name} — ${b.why}`).join('\n') || '';
+            const dessert = result.dessert ? `🍰 ${result.dessert.name} — ${result.dessert.why}` : '';
+            alert(`🍷 Pairings\n\nSides:\n${sides}\n\nBeverages:\n${drinks}\n\nDessert:\n${dessert}`);
           } catch (err) { alert(err.message); }
         }} className="btn-secondary text-xs flex items-center gap-1.5">
           🍷 Pairings
