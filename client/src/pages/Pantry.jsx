@@ -106,6 +106,18 @@ export default function Pantry() {
             <Package className="text-brand-500" size={28} />
             Pantry
           </h1>
+          <button onClick={async () => {
+            try {
+              const result = await api.aiPantryAlerts();
+              if (result.tip && !result.alerts?.length) { alert(result.tip); return; }
+              const alerts = result.alerts?.map(a => `⚠️ ${a.name} — ${a.daysLeft} day${a.daysLeft !== 1 ? 's' : ''} left`).join('\n') || '';
+              const idea = result.mealIdea ? `\n\n🍳 Use-it-up recipe idea:\n${result.mealIdea}` : '';
+              const tip = result.tip ? `\n\n💡 ${result.tip}` : '';
+              alert(`🔔 Pantry Expiry Alerts\n\n${alerts}${idea}${tip}`);
+            } catch (err) { alert(err.message); }
+          }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
+            🔔 Expiry Alerts
+          </button>
           <p className="text-sm text-gray-500 mt-1">{items.length} items in your pantry</p>
         </div>
         <div className="flex gap-2">
