@@ -285,6 +285,11 @@ export default function MealPlan() {
                 <span className="text-sm text-gray-400">
                   {weekDates[dayIdx].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
+                {weekDates[dayIdx].toDateString() === new Date().toDateString() && (
+                  <button onClick={() => navigate('/tracker')} className="ml-auto text-xs font-medium text-brand-500 hover:text-brand-600 transition-colors flex items-center gap-1">
+                    Track meals →
+                  </button>
+                )}
               </div>
 
               {groupedByDay[dayIdx].length === 0 ? (
