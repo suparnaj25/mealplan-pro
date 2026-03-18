@@ -27,7 +27,7 @@ router.get('/plan', (req, res) => {
       return {
         ...i,
         nutrition: { calories: Math.round((nutrition.calories || 0) * sf), protein: Math.round((nutrition.protein || 0) * sf), carbs: Math.round((nutrition.carbs || 0) * sf), fat: Math.round((nutrition.fat || 0) * sf), fiber: Math.round((nutrition.fiber || 0) * sf) },
-        ingredients: ingredients.map(ing => ({ ...ing, quantity: Math.round((ing.quantity || 1) * sf * (i.servings || 1) * 10) / 10 })),
+        ingredients: ingredients.map(ing => ({ ...ing, quantity: Math.round(((ing.quantity || 1) / (i.recipe_servings || 4)) * (i.servings || 1) * sf * 10) / 10 })),
         instructions: parseJSON(i.instructions, []),
         locked: !!i.locked,
         scale_factor: sf,
@@ -170,7 +170,22 @@ router.post('/regenerate-slot', (req, res) => {
 
     const updated = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
       FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.id = ?`).get(itemId);
-    res.json({ item: { ...updated, nutrition: parseJSON(updated.nutrition, {}), ingredients: parseJSON(updated.ingredients, []), instructions: parseJSON(updated.instructions, []), locked: !!updated.locked } });
+    const sf = updated.scale_factor || 1.0;
+    const rawNutrition = parseJSON(updated.nutrition, {});
+    res.json({ item: {
+      ...updated,
+      nutrition: {
+        calories: Math.round((rawNutrition.calories || 0) * sf),
+        protein: Math.round((rawNutrition.protein || 0) * sf),
+        carbs: Math.round((rawNutrition.carbs || 0) * sf),
+        fat: Math.round((rawNutrition.fat || 0) * sf),
+        fiber: Math.round((rawNutrition.fiber || 0) * sf),
+      },
+      ingredients: parseJSON(updated.ingredients, []),
+      instructions: parseJSON(updated.instructions, []),
+      locked: !!updated.locked,
+      scale_factor: sf,
+    } });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
