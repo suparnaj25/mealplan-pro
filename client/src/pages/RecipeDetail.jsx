@@ -14,6 +14,10 @@ import {
   Sparkles,
   Globe,
   Leaf,
+  ChefHat,
+  Wine,
+  Salad,
+  RefreshCw,
 } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiSwapCard } from '../components/AiResultSheet';
@@ -509,24 +513,24 @@ export default function RecipeDetail() {
       <div className="flex flex-wrap gap-2">
         <button onClick={loadSubstitutions} disabled={subsLoading}
           className="btn-secondary text-xs flex items-center gap-1.5">
-          {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : '🥬'}
+          {subsLoading ? <div className="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <RefreshCw size={12} />}
           {subsLoading ? 'Finding alternatives...' : 'Swap ingredients'}
         </button>
         <button onClick={() => openAiSheet('cooking-tips')} className="btn-secondary text-xs flex items-center gap-1.5">
-          👨‍🍳 Cooking Tips
+          <ChefHat size={12} /> Cooking Tips
         </button>
         <button onClick={() => openAiSheet('make-healthier')} className="btn-secondary text-xs flex items-center gap-1.5">
-          🥗 Make Healthier
+          <Salad size={12} /> Make Healthier
         </button>
         <button onClick={() => openAiSheet('pairings')} className="btn-secondary text-xs flex items-center gap-1.5">
-          🍷 Pairings
+          <Wine size={12} /> Pairings
         </button>
       </div>
 
       {/* Substitution Results */}
       {substitutions?.substitutions?.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
-          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">🥬 Ingredient Alternatives</h3>
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2"><RefreshCw size={14} className="text-green-500" /> Ingredient Alternatives</h3>
           <div className="space-y-2">
             {substitutions.substitutions.map((sub, i) => (
               <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-sm">
