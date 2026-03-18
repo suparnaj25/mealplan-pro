@@ -262,16 +262,6 @@ export default function MealPlan() {
       {/* Meal plan grid */}
       {!loading && plan && (
         <div className="space-y-4">
-          {/* Top grocery list CTA */}
-          <div className="glass-card p-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Ready to shop?</p>
-              <p className="text-xs text-gray-500">Generate a grocery list from this meal plan</p>
-            </div>
-            <button onClick={handleCreateGroceryList} className="btn-primary flex items-center gap-2 text-sm">
-              <ShoppingCart size={16} /> Generate Grocery List
-            </button>
-          </div>
           {DAYS.map((day, dayIdx) => (
             <motion.div
               key={dayIdx}
