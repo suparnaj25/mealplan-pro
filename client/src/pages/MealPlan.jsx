@@ -285,11 +285,11 @@ export default function MealPlan() {
               {groupedByDay[dayIdx].length === 0 ? (
                 <p className="text-sm text-gray-400 italic">No meals planned</p>
               ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
                   {groupedByDay[dayIdx].map((item) => (
                     <div
                       key={item.id}
-                      className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 card-hover cursor-pointer group"
+                      className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 card-hover cursor-pointer group min-w-0"
                       onClick={() => navigate(`/recipe/${item.recipe_id}`, { state: { recipe: { ...item, name: item.recipe_name, id: item.recipe_id } } })}
                     >
                       {/* Food image */}
