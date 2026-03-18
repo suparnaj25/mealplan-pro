@@ -29,7 +29,7 @@ export default function AiChef() {
   };
 
   if (aiConfigured === null) return <div className="flex justify-center py-24"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>;
-  if (!aiConfigured) return <div className="text-center py-16"><div className="text-6xl mb-4">👨‍🍳</div><h3 className="text-xl font-bold mb-2">AI Chef Not Available</h3><p className="text-gray-500">Set OPENAI_API_KEY to enable.</p></div>;
+  if (!aiConfigured) return <div className="text-center py-16"><div className="mb-4 flex justify-center"><ChefHat size={56} className="text-gray-300" /></div><h3 className="text-xl font-bold mb-2">AI Chef Not Available</h3><p className="text-gray-500">Set OPENAI_API_KEY to enable.</p></div>;
 
   return (
     <div className="space-y-4">
