@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity } from 'lucide-react';
+import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity, UtensilsCrossed } from 'lucide-react';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 
 const navItems = [
@@ -43,7 +43,7 @@ export default function Layout() {
             onClick={handleLogoClick}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
-            <span className="text-2xl">🍽️</span>
+            <UtensilsCrossed size={24} className="text-brand-500" />
             <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-brand-500 to-emerald-400 bg-clip-text text-transparent">
               MealPlan Pro
             </h1>
@@ -81,7 +81,7 @@ export default function Layout() {
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                   <button onClick={handleLogoClick} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                    <span className="text-2xl">🍽️</span>
+                    <UtensilsCrossed size={22} className="text-brand-500" />
                     <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-brand-500 to-emerald-400 bg-clip-text text-transparent">MealPlan Pro</span>
                   </button>
                   <button onClick={() => setMenuOpen(false)} className="btn-ghost p-2 rounded-lg" aria-label="Close menu">

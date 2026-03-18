@@ -84,6 +84,16 @@ export default function Onboarding() {
         try { await api.krogerSetLocation(krogerLocationId); } catch {}
       }
       await api.completeOnboarding();
+      // Auto-generate first meal plan so user lands on a populated page
+      try {
+        const today = new Date();
+        const day = today.getDay();
+        const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+        const weekStart = new Date(today);
+        weekStart.setDate(diff);
+        const ws = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+        await api.generateMealPlan(ws);
+      } catch (e) { console.warn('Auto-generate meal plan failed:', e); }
       const user = await api.getMe();
       setUser(user);
       navigate('/');

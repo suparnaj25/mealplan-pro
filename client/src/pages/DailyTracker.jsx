@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame, Sparkles, Camera } from 'lucide-react';
+import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame, Sparkles, Camera, Sunrise, Sun, Moon, Cookie, UtensilsCrossed } from 'lucide-react';
 import { api } from '../services/api';
 
-const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
+const MealIcon = ({ type, size = 18, className = '' }) => {
+  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie };
+  const Icon = icons[type] || UtensilsCrossed;
+  return <Icon size={size} className={className} />;
+};
 const STATUS_COLORS = {
   planned: 'bg-gray-100 dark:bg-gray-800 text-gray-500',
   eaten: 'bg-brand-500/10 text-brand-600 border-brand-500',
@@ -250,7 +254,7 @@ export default function DailyTracker() {
           {['breakfast', 'lunch', 'dinner', 'snack'].map(mealType => (
             <motion.div key={mealType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                <span className="text-lg">{MEAL_ICONS[mealType]}</span>
+                <MealIcon type={mealType} size={18} className="text-brand-500" />
                 <h3 className="font-semibold text-sm capitalize">{mealType}</h3>
                 <span className="text-xs text-gray-400 ml-auto">{grouped[mealType].reduce((s, l) => s + (l.status !== 'skipped' ? (l.calories || 0) : 0), 0)} kcal</span>
               </div>
@@ -425,10 +429,10 @@ export default function DailyTracker() {
               </div>
               <form onSubmit={handleQuickAdd} className="space-y-3">
                 <select value={quickAddForm.mealType} onChange={(e) => setQuickAddForm({...quickAddForm, mealType: e.target.value})} className="input-field text-sm">
-                  <option value="breakfast">🌅 Breakfast</option>
-                  <option value="lunch">☀️ Lunch</option>
-                  <option value="dinner">🌙 Dinner</option>
-                  <option value="snack">🍿 Snack</option>
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                  <option value="snack">Snack</option>
                 </select>
 
                 {/* Food search with autocomplete */}
