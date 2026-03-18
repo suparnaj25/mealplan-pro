@@ -2,16 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot, Send, Sparkles, Brain, ShoppingBasket, DollarSign, BarChart3,
-  ChefHat, Lightbulb, ArrowRight, Loader2, MessageCircle, X, Mic, MicOff
+  ChefHat, Lightbulb, ArrowRight, Loader2, MessageCircle, X, Mic, MicOff, AlertTriangle
 } from 'lucide-react';
 import { api } from '../services/api';
 
 const FEATURES = [
-  { id: 'chat', icon: MessageCircle, title: '💬 Ask me anything', desc: 'Get meal ideas, nutrition advice, or cooking tips', color: 'from-brand-400 to-brand-600' },
-  { id: 'optimize', icon: Brain, title: '📊 Rate my meal plan', desc: 'See how well your plan matches your goals', color: 'from-violet-400 to-purple-600' },
-  { id: 'pantry', icon: ChefHat, title: '🍳 What can I make?', desc: 'Find recipes using what you already have', color: 'from-emerald-400 to-green-600' },
-  { id: 'budget', icon: DollarSign, title: '💰 How much will this cost?', desc: 'Estimate your weekly grocery spend', color: 'from-amber-400 to-orange-600' },
-  { id: 'nutrition', icon: BarChart3, title: '📋 Weekly health check', desc: 'Grade your nutrition against your targets', color: 'from-blue-400 to-indigo-600' },
+  { id: 'chat', icon: MessageCircle, title: 'Ask me anything', desc: 'Get meal ideas, nutrition advice, or cooking tips', color: 'from-brand-400 to-brand-600' },
+  { id: 'optimize', icon: Brain, title: 'Rate my meal plan', desc: 'See how well your plan matches your goals', color: 'from-violet-400 to-purple-600' },
+  { id: 'pantry', icon: ChefHat, title: 'What can I make?', desc: 'Find recipes using what you already have', color: 'from-emerald-400 to-green-600' },
+  { id: 'budget', icon: DollarSign, title: 'How much will this cost?', desc: 'Estimate your weekly grocery spend', color: 'from-amber-400 to-orange-600' },
+  { id: 'nutrition', icon: BarChart3, title: 'Weekly health check', desc: 'Grade your nutrition against your targets', color: 'from-blue-400 to-indigo-600' },
 ];
 
 export default function AiAssistant() {
@@ -122,7 +122,7 @@ export default function AiAssistant() {
   if (!aiConfigured) {
     return (
       <div className="text-center py-16">
-        <div className="text-6xl mb-4">🤖</div>
+        <div className="mb-4 flex justify-center"><Bot size={56} className="text-gray-300" /></div>
         <h3 className="text-xl font-bold mb-2">AI Features Not Configured</h3>
         <p className="text-gray-500 mb-4 max-w-md mx-auto">
           Set <code className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">OPENAI_API_KEY</code> in your environment variables to enable AI-powered features.
@@ -259,7 +259,7 @@ export default function AiAssistant() {
           {/* Error */}
           {error && (
             <div className="glass-card p-6 text-center">
-              <div className="text-4xl mb-3">😕</div>
+              <div className="mb-3 flex justify-center"><AlertTriangle size={40} className="text-red-300" /></div>
               <p className="text-red-500 text-sm">{error}</p>
             </div>
           )}

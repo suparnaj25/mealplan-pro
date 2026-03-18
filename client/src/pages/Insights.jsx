@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame } from 'lucide-react';
+import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection } from '../components/AiResultSheet';
 
@@ -57,7 +57,7 @@ export default function Insights() {
   if (error) return (
     <div className="space-y-6">
       <div><h1 className="section-title flex items-center gap-2"><Sparkles className="text-brand-500" size={28} /> Insights</h1></div>
-      <div className="glass-card p-6 text-center"><div className="text-4xl mb-3">😕</div><p className="text-red-500 text-sm">{error}</p><button onClick={loadInsights} className="btn-primary text-sm mt-4">Retry</button></div>
+      <div className="glass-card p-6 text-center"><div className="mb-3 flex justify-center"><AlertTriangle size={40} className="text-red-300" /></div><p className="text-red-500 text-sm">{error}</p><button onClick={loadInsights} className="btn-primary text-sm mt-4">Retry</button></div>
     </div>
   );
 
