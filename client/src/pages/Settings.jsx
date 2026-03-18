@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings as SettingsIcon, User, Moon, Sun, Save, ShieldAlert, Salad, Gauge, Heart, Globe, ShoppingBag, Leaf, ChevronDown, ChevronUp, Check, Users, Copy, LogOut as LeaveIcon } from 'lucide-react';
+import { Settings as SettingsIcon, User, Moon, Sun, Save, ShieldAlert, Salad, Gauge, Heart, Globe, ShoppingBag, Leaf, ChevronDown, ChevronUp, Check, Users, Copy, LogOut as LeaveIcon, Ban, BookOpen, CookingPot, MapPin, Store, Sparkles, DollarSign, Scale } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 import TagInput from '../components/TagInput';
@@ -358,11 +358,11 @@ export default function Settings() {
       {/* Ingredients */}
       <Section icon={Heart} title="Ingredient Likes & Dislikes">
         <div>
-          <label className="block text-xs font-medium mb-1.5 text-gray-500">❌ Disliked Ingredients</label>
+          <label className="block text-xs font-medium mb-1.5 text-gray-500 flex items-center gap-1"><Ban size={12} className="text-red-400" /> Disliked Ingredients</label>
           <TagInput selected={disliked} onChange={setDisliked} placeholder="Type to search..." colorClass="tag-danger" />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1.5 text-gray-500">❤️ Loved Ingredients</label>
+          <label className="block text-xs font-medium mb-1.5 text-gray-500 flex items-center gap-1"><Heart size={12} className="text-rose-500" /> Loved Ingredients</label>
           <TagInput selected={loved} onChange={setLoved} placeholder="Type to search..." colorClass="tag-active" />
         </div>
         <button onClick={() => saveSection('ingredients', () => api.updateIngredients({ dislikedIngredients: disliked, lovedIngredients: loved }))} className="btn-primary text-sm flex items-center gap-2">
@@ -402,10 +402,10 @@ export default function Settings() {
       <Section icon={Leaf} title="Organic & Quality Preference">
         <div className="space-y-2">
           {[
-            { v: 'always_organic', l: '🌱 Always Organic' },
-            { v: 'prefer_organic', l: '🌿 Prefer Organic' },
-            { v: 'no_preference', l: '⚖️ No Preference' },
-            { v: 'conventional', l: '💰 Conventional / Budget' },
+            { v: 'always_organic', l: 'Always Organic' },
+            { v: 'prefer_organic', l: 'Prefer Organic' },
+            { v: 'no_preference', l: 'No Preference' },
+            { v: 'conventional', l: 'Conventional / Budget' },
           ].map(({ v, l }) => (
             <button key={v} onClick={() => setOrganicPref(v)}
               className={`w-full text-left p-3 rounded-xl text-sm font-medium transition-all flex items-center justify-between ${organicPref === v ? 'bg-brand-500/10 border border-brand-500 text-brand-600' : 'bg-gray-50 dark:bg-gray-800'}`}>

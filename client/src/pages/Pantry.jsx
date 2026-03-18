@@ -191,7 +191,7 @@ export default function Pantry() {
       {/* Empty state */}
       {items.length === 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
-          <div className="text-6xl mb-4">🏪</div>
+          <div className="mb-4 flex justify-center"><Package size={56} className="text-gray-300" /></div>
           <h3 className="text-xl font-bold mb-2">Pantry is empty</h3>
           <p className="text-gray-500">Add items to track what you have on hand</p>
         </motion.div>
