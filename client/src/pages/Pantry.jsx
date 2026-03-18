@@ -236,7 +236,7 @@ export default function Pantry() {
         );
       })}
 
-      {/* AI Expiry Alerts Sheet */}
+      {/* Expiry Alerts Sheet */}
       <AiResultSheet
         open={aiSheet.open}
         onClose={() => setAiSheet({ open: false, data: null, loading: false })}

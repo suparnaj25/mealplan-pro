@@ -10,7 +10,7 @@ const navItems = [
   { path: '/groceries', icon: ShoppingCart, label: 'Groceries' },
   { path: '/pantry', icon: Package, label: 'Pantry' },
   { path: '/my-recipes', icon: ChefHat, label: 'Recipes' },
-  { path: '/ai-chef', icon: ChefHat, label: 'AI Chef' },
+  { path: '/ai-chef', icon: ChefHat, label: 'Chef' },
   { path: '/insights', icon: Sparkles, label: 'Insights' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];

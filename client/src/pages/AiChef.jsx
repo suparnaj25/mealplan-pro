@@ -29,12 +29,12 @@ export default function AiChef() {
   };
 
   if (aiConfigured === null) return <div className="flex justify-center py-24"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>;
-  if (!aiConfigured) return <div className="text-center py-16"><div className="mb-4 flex justify-center"><ChefHat size={56} className="text-gray-300" /></div><h3 className="text-xl font-bold mb-2">AI Chef Not Available</h3><p className="text-gray-500">Set OPENAI_API_KEY to enable.</p></div>;
+  if (!aiConfigured) return <div className="text-center py-16"><div className="mb-4 flex justify-center"><ChefHat size={56} className="text-gray-300" /></div><h3 className="text-xl font-bold mb-2">Smart Chef Not Available</h3><p className="text-gray-500">Set OPENAI_API_KEY to enable.</p></div>;
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="section-title flex items-center gap-2"><ChefHat className="text-brand-500" size={28} /> AI Chef</h1>
+        <h1 className="section-title flex items-center gap-2"><ChefHat className="text-brand-500" size={28} /> Smart Chef</h1>
         <p className="text-sm text-gray-500 mt-1">Ask me anything about meals, nutrition, or recipes</p>
       </div>
       <div className="glass-card overflow-hidden flex flex-col" style={{ height: '75vh' }}>
@@ -62,7 +62,7 @@ export default function AiChef() {
         </div>
         <div className="p-4 border-t border-gray-100 dark:border-gray-800">
           <form onSubmit={(e) => { e.preventDefault(); sendChat(); }} className="flex gap-2">
-            <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask the AI Chef..." className="input-field flex-1 text-sm" disabled={chatLoading} />
+            <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask about meals, nutrition, recipes..." className="input-field flex-1 text-sm" disabled={chatLoading} />
             <button type="submit" disabled={chatLoading || !chatInput.trim()} className="btn-primary p-3 rounded-xl"><Send size={18} /></button>
           </form>
         </div>

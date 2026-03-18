@@ -205,7 +205,7 @@ export default function GroceryList() {
                   setAiSheet({ open: true, data: result, loading: false });
                 } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
               }} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
-                <Sparkles size={12} /> AI Shopping Tips
+                <Sparkles size={12} /> Shopping Tips
               </button>
             )}
           </div>
@@ -490,7 +490,7 @@ export default function GroceryList() {
         </motion.div>
       ))}
 
-      {/* AI Shopping Tips Sheet */}
+      {/* Shopping Tips Sheet */}
       <AiResultSheet
         open={aiSheet.open}
         onClose={() => setAiSheet({ open: false, data: null, loading: false })}

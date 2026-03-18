@@ -238,7 +238,7 @@ export default function Settings() {
             alert(`👨‍👩‍👧‍👦 Family Taste Profile\n\n${result.summary}\n\n${profiles}\n\n⭐ Family Favorites: ${favs}\n\n${suggestions}`);
           } catch (err) { alert(err.message); }
         }} className="btn-secondary text-xs flex items-center gap-1 w-full justify-center">
-          <Sparkles size={12} /> AI Taste Profile
+          <Sparkles size={12} /> Taste Profile
         </button>
 
         <button onClick={handleLeave} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1">

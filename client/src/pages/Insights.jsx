@@ -193,7 +193,7 @@ export default function Insights() {
             <Sparkles size={12} /> Get Swap Ideas
           </button>
         </div>
-        <p className="text-xs text-gray-500">AI suggests specific meal swaps to hit your macro targets + week-over-week comparison</p>
+        <p className="text-xs text-gray-500">Get specific meal swaps to hit your macro targets + week-over-week comparison</p>
       </motion.div>
 
       {/* Multi-Week Trend Analysis */}
@@ -211,7 +211,7 @@ export default function Insights() {
             <Sparkles size={12} /> Analyze Trends
           </button>
         </div>
-        <p className="text-xs text-gray-500">AI analyzes your last 4 weeks of data to find patterns and predict your trajectory</p>
+        <p className="text-xs text-gray-500">Analyzes your last 4 weeks of data to find patterns and predict your trajectory</p>
       </motion.div>
 
       {/* Streaks & Achievements */}

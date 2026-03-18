@@ -77,7 +77,7 @@ export default function AiResultSheet({ open, onClose, title, emoji = '✨', loa
                     <h2 className="text-lg font-bold text-white">{title}</h2>
                     <div className="flex items-center gap-1 text-white/70 text-xs">
                       <Sparkles size={12} />
-                      <span>Powered by AI</span>
+                      <span>Smart suggestion</span>
                     </div>
                   </div>
                 </div>
@@ -90,7 +90,7 @@ export default function AiResultSheet({ open, onClose, title, emoji = '✨', loa
                     <div className="flex justify-center">
                       <Loader2 size={32} className="animate-spin text-brand-500" />
                     </div>
-                    <p className="text-center text-sm text-gray-500">AI is thinking...</p>
+                    <p className="text-center text-sm text-gray-500">Thinking...</p>
                     <div className="space-y-3">
                       {[1, 2, 3].map(i => (
                         <div key={i} className="animate-pulse">
