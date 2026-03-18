@@ -509,7 +509,7 @@ export default function RecipeDetail() {
         </motion.div>
       )}
 
-      {/* AI Action buttons */}
+      {/* Smart Action buttons */}
       <div className="flex flex-wrap gap-2">
         <button onClick={loadSubstitutions} disabled={subsLoading}
           className="btn-secondary text-xs flex items-center gap-1.5">
@@ -747,7 +747,7 @@ export default function RecipeDetail() {
         )}
       </AnimatePresence>
 
-      {/* AI Result Sheet */}
+      {/* Result Sheet */}
       <AiResultSheet
         open={aiSheet.open}
         onClose={() => setAiSheet({ open: false, type: null, data: null, loading: false })}

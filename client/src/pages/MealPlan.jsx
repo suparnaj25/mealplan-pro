@@ -366,9 +366,9 @@ export default function MealPlan() {
               )}
             </motion.div>
           ))}
-          {/* AI Tools */}
+          {/* Smart Tools */}
           <div className="glass-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">AI Tools</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Smart Tools</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={async () => {
                 setAiSheet({ open: true, type: 'summary', data: null, loading: true });

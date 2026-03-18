@@ -123,9 +123,9 @@ export default function AiAssistant() {
     return (
       <div className="text-center py-16">
         <div className="mb-4 flex justify-center"><Bot size={56} className="text-gray-300" /></div>
-        <h3 className="text-xl font-bold mb-2">AI Features Not Configured</h3>
+        <h3 className="text-xl font-bold mb-2">Smart Features Not Configured</h3>
         <p className="text-gray-500 mb-4 max-w-md mx-auto">
-          Set <code className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">OPENAI_API_KEY</code> in your environment variables to enable AI-powered features.
+          Set <code className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">OPENAI_API_KEY</code> in your environment variables to enable smart features.
         </p>
         <p className="text-sm text-gray-400">Supports OpenAI, Azure OpenAI, or any compatible API.</p>
       </div>
@@ -138,7 +138,7 @@ export default function AiAssistant() {
       <div>
         <h1 className="section-title flex items-center gap-2">
           <Bot className="text-brand-500" size={28} />
-          AI Assistant
+          Smart Assistant
         </h1>
         <p className="text-sm text-gray-500 mt-1">Your intelligent meal planning companion</p>
       </div>
@@ -252,7 +252,7 @@ export default function AiAssistant() {
           {loading && (
             <div className="glass-card p-12 text-center">
               <Loader2 size={40} className="mx-auto mb-4 animate-spin text-brand-500" />
-              <p className="text-sm text-gray-500">AI is analyzing your data...</p>
+              <p className="text-sm text-gray-500">Analyzing your data...</p>
             </div>
           )}
 

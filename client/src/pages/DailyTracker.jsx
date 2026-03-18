@@ -471,7 +471,7 @@ export default function DailyTracker() {
                       finally { setAiParsing(false); }
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity disabled:opacity-40 flex-1 justify-center">
-                    <Sparkles size={15} /> {aiParsing ? 'Estimating...' : 'AI Estimate'}
+                    <Sparkles size={15} /> {aiParsing ? 'Estimating...' : 'Estimate Nutrition'}
                   </button>
                   <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer flex-1 justify-center">
                     <Camera size={15} /> {analyzingPhoto ? 'Analyzing...' : 'Snap Photo'}
@@ -498,7 +498,7 @@ export default function DailyTracker() {
                 {/* AI breakdown of parsed items */}
                 {aiParseItems && aiParseItems.length > 1 && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 space-y-1">
-                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1"><Sparkles size={12} /> AI identified {aiParseItems.length} items:</p>
+                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1"><Sparkles size={12} /> Found {aiParseItems.length} items:</p>
                     {aiParseItems.map((item, i) => (
                       <div key={i} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                         <span>{item.name}</span>
