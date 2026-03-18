@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate } from 'react-router-dom';
 import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
+const MealIcon = ({ type, size = 14, className = '' }) => {
+  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie };
+  const Icon = icons[type] || UtensilsCrossed;
+  return <Icon size={size} className={className} />;
+};
 
 function getWeekStart(date = new Date()) {
   const d = new Date(date);
@@ -246,7 +250,7 @@ export default function MealPlan() {
       {/* Empty state */}
       {!loading && !plan && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
-          <div className="text-6xl mb-4">🍽️</div>
+          <div className="mb-4 flex justify-center"><UtensilsCrossed size={56} className="text-gray-300" /></div>
           <h3 className="text-xl font-bold mb-2">No meal plan yet</h3>
           <p className="text-gray-500 mb-6">Generate a personalized meal plan based on your preferences</p>
           <button onClick={openGenerateModal} disabled={generating} className="btn-primary inline-flex items-center gap-2">
@@ -298,8 +302,8 @@ export default function MealPlan() {
                         <img src={recipeImages[item.recipe_name] || item.image_url || getRecipeImage(item.recipe_name, item.meal_type)} alt={item.recipe_name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                        <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1">
-                          {MEAL_ICONS[item.meal_type]} {item.meal_type}
+                        <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1.5">
+                          <MealIcon type={item.meal_type} size={12} className="text-white/90" /> {item.meal_type}
                         </span>
                       </div>
                       <div className="p-3">
@@ -338,25 +342,25 @@ export default function MealPlan() {
                         See recipe details →
                       </div>
                       {/* Taste feedback reactions */}
-                      <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
                         <span className="text-[10px] text-gray-400 mr-1">Rate:</span>
                         {[
-                          { reaction: 'loved', emoji: '😍', label: 'Loved it' },
-                          { reaction: 'liked', emoji: '👍', label: 'Liked it' },
-                          { reaction: 'ok', emoji: '😐', label: 'It was ok' },
-                          { reaction: 'disliked', emoji: '👎', label: 'Not for me' },
-                        ].map(({ reaction, emoji, label }) => (
+                          { reaction: 'loved', Icon: Heart, label: 'Loved it', activeColor: 'text-rose-500' },
+                          { reaction: 'liked', Icon: ThumbsUp, label: 'Liked it', activeColor: 'text-brand-500' },
+                          { reaction: 'ok', Icon: Meh, label: 'It was ok', activeColor: 'text-amber-500' },
+                          { reaction: 'disliked', Icon: ThumbsDown, label: 'Not for me', activeColor: 'text-gray-500' },
+                        ].map(({ reaction, Icon, label, activeColor }) => (
                           <button
                             key={reaction}
                             onClick={() => handleFeedback(item.recipe_id, item.recipe_name, reaction)}
                             title={label}
-                            className={`text-base p-0.5 rounded transition-all ${
+                            className={`p-1 rounded-lg transition-all ${
                               feedbackMap[item.recipe_id] === reaction
-                                ? 'scale-125 ring-2 ring-brand-500 ring-offset-1 bg-brand-50 dark:bg-brand-900/30'
-                                : 'opacity-40 hover:opacity-100 hover:scale-110'
+                                ? `scale-110 ${activeColor} bg-brand-50 dark:bg-brand-900/30 ring-1 ring-brand-200 dark:ring-brand-800`
+                                : 'text-gray-300 hover:text-gray-500 hover:scale-110'
                             }`}
                           >
-                            {emoji}
+                            <Icon size={14} fill={feedbackMap[item.recipe_id] === reaction ? 'currentColor' : 'none'} />
                           </button>
                         ))}
                       </div>
@@ -367,37 +371,29 @@ export default function MealPlan() {
               )}
             </motion.div>
           ))}
-          {/* Bottom grocery list CTA */}
-          <div className="glass-card p-4 flex items-center justify-center gap-3">
-            <button onClick={handleCreateGroceryList} className="btn-primary flex items-center gap-2">
-              <ShoppingCart size={18} /> Generate Grocery List
-            </button>
-            <button onClick={openGenerateModal} disabled={generating} className="btn-secondary flex items-center gap-2">
-              {generating ? <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={18} />}
-              Regenerate Meal Plan
-            </button>
-
-            {/* AI Plan Explanation */}
-            <button onClick={async () => {
-              setAiSheet({ open: true, type: 'summary', data: null, loading: true });
-              try {
-                const result = await api.aiExplainPlan(plan.id);
-                setAiSheet({ open: true, type: 'summary', data: result, loading: false });
-              } catch (err) { setAiSheet({ open: true, type: 'summary', data: { error: err.message }, loading: false }); }
-            }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
-              <Sparkles size={16} /> AI Plan Summary
-            </button>
-
-            {/* AI Meal Prep Guide */}
-            <button onClick={async () => {
-              setAiSheet({ open: true, type: 'prep', data: null, loading: true });
-              try {
-                const result = await api.aiMealPrep(plan.id);
-                setAiSheet({ open: true, type: 'prep', data: result, loading: false });
-              } catch (err) { setAiSheet({ open: true, type: 'prep', data: { error: err.message }, loading: false }); }
-            }} className="btn-secondary flex items-center gap-2 text-sm w-full justify-center">
-              <ChefHat size={16} /> AI Meal Prep Guide
-            </button>
+          {/* AI Tools */}
+          <div className="glass-card p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">AI Tools</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={async () => {
+                setAiSheet({ open: true, type: 'summary', data: null, loading: true });
+                try {
+                  const result = await api.aiExplainPlan(plan.id);
+                  setAiSheet({ open: true, type: 'summary', data: result, loading: false });
+                } catch (err) { setAiSheet({ open: true, type: 'summary', data: { error: err.message }, loading: false }); }
+              }} className="btn-secondary flex items-center gap-2 text-sm justify-center py-3">
+                <FileText size={16} /> Plan Summary
+              </button>
+              <button onClick={async () => {
+                setAiSheet({ open: true, type: 'prep', data: null, loading: true });
+                try {
+                  const result = await api.aiMealPrep(plan.id);
+                  setAiSheet({ open: true, type: 'prep', data: result, loading: false });
+                } catch (err) { setAiSheet({ open: true, type: 'prep', data: { error: err.message }, loading: false }); }
+              }} className="btn-secondary flex items-center gap-2 text-sm justify-center py-3">
+                <ChefHat size={16} /> Meal Prep Guide
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -408,20 +404,20 @@ export default function MealPlan() {
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowGenModal(false)}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-lg mb-2">🍽️ What meals should we plan?</h3>
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><UtensilsCrossed size={20} className="text-brand-500" /> What meals should we plan?</h3>
               <p className="text-xs text-gray-500 mb-4">Select which meals to include. You can change this each week.</p>
               <div className="grid grid-cols-2 gap-3 mb-6">
                 {[
-                  { key: 'breakfast', label: 'Breakfast', icon: '🌅' },
-                  { key: 'lunch', label: 'Lunch', icon: '☀️' },
-                  { key: 'dinner', label: 'Dinner', icon: '🌙' },
-                  { key: 'snacks', label: 'Snacks', icon: '🍿' },
-                ].map(({ key, label, icon }) => (
+                  { key: 'breakfast', label: 'Breakfast', Icon: Sunrise },
+                  { key: 'lunch', label: 'Lunch', Icon: Sun },
+                  { key: 'dinner', label: 'Dinner', Icon: Moon },
+                  { key: 'snacks', label: 'Snacks', Icon: Cookie },
+                ].map(({ key, label, Icon }) => (
                   <button key={key} onClick={() => setGenMealTypes(prev => ({ ...prev, [key]: !prev[key] }))}
-                    className={`py-4 rounded-xl text-sm font-medium transition-all flex flex-col items-center gap-1 ${
+                    className={`py-4 rounded-xl text-sm font-medium transition-all flex flex-col items-center gap-2 ${
                       genMealTypes[key] ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
                     }`}>
-                    <span className="text-2xl">{icon}</span>
+                    <Icon size={24} />
                     {label}
                   </button>
                 ))}
@@ -455,7 +451,7 @@ export default function MealPlan() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-lg">🔁 Repeat Meal</h3>
+                <h3 className="font-bold text-lg flex items-center gap-2"><Repeat2 size={20} className="text-brand-500" /> Repeat Meal</h3>
                 <button onClick={() => setCopyModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
                   <X size={18} />
                 </button>

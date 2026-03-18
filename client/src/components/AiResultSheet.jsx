@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sparkles, Loader2 } from 'lucide-react';
+import { X, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 
 /**
  * AiResultSheet — A beautiful bottom-sheet / modal for displaying AI results.
@@ -70,7 +70,9 @@ export default function AiResultSheet({ open, onClose, title, emoji = '✨', loa
                   <X size={18} />
                 </button>
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl">{emoji}</span>
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Sparkles size={22} className="text-white" />
+                  </div>
                   <div>
                     <h2 className="text-lg font-bold text-white">{title}</h2>
                     <div className="flex items-center gap-1 text-white/70 text-xs">
@@ -109,7 +111,7 @@ export default function AiResultSheet({ open, onClose, title, emoji = '✨', loa
                   onClick={onClose}
                   className="w-full py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-brand-500 to-purple-500 text-white hover:opacity-90 transition-opacity active:scale-[0.98]"
                 >
-                  Got it! 👍
+                  Got it
                 </button>
               </div>
             </div>
