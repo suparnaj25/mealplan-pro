@@ -338,7 +338,7 @@ export default function AiAssistant() {
                     <span>{s.matchPercentage}% match</span>
                     <span>Difficulty: {s.difficulty}</span>
                   </div>
-                  {s.tip && <p className="text-xs text-gray-500 mt-2 italic">💡 {s.tip}</p>}
+                  {s.tip && <p className="text-xs text-gray-500 mt-2 italic flex items-center gap-1"><Lightbulb size={12} className="text-amber-400 flex-shrink-0" /> {s.tip}</p>}
                   {s.missingItems?.length > 0 && (
                     <p className="text-xs text-gray-400 mt-1">Missing: {s.missingItems.join(', ')}</p>
                   )}
@@ -372,7 +372,7 @@ export default function AiAssistant() {
 
               {result.savingTips?.length > 0 && (
                 <div className="glass-card p-4">
-                  <h3 className="font-semibold text-sm mb-3">💰 Saving Tips</h3>
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-1.5"><DollarSign size={14} className="text-green-500" /> Saving Tips</h3>
                   <div className="space-y-2">
                     {result.savingTips.map((t, i) => (
                       <div key={i} className="flex items-center justify-between text-sm bg-green-50 dark:bg-green-900/20 p-3 rounded-xl">

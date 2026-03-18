@@ -288,7 +288,7 @@ export default function DailyTracker() {
                             )}
                           </div>
                           <label className="btn-secondary text-xs flex items-center gap-1 cursor-pointer justify-center py-1.5">
-                            📷 {analyzingPhoto ? 'Analyzing...' : 'Photo'}
+                            <Camera size={12} /> {analyzingPhoto ? 'Analyzing...' : 'Photo'}
                             <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
                           </label>
                           <div className="grid grid-cols-4 gap-2">

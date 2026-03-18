@@ -134,7 +134,7 @@ export default function Pantry() {
       {whatCanIMake && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm flex items-center gap-2">🍳 Recipes you can make now</h3>
+            <h3 className="font-semibold text-sm flex items-center gap-2"><ChefHat size={14} className="text-brand-500" /> Recipes you can make now</h3>
             <button onClick={() => setWhatCanIMake(null)} className="btn-ghost p-1 text-gray-400"><X size={16} /></button>
           </div>
           {whatCanIMake.quickMealIdea && (
