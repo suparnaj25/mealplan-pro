@@ -3,6 +3,8 @@
  * Docs: https://www.themealdb.com/api.php
  */
 
+const { estimateNutritionFromIngredients } = require('../nutritionEstimator');
+
 async function searchRecipes(query, options = {}) {
   try {
     const res = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(query)}`);
@@ -19,6 +21,9 @@ async function searchRecipes(query, options = {}) {
         }
       }
 
+      // Estimate nutrition from actual ingredients instead of returning zeros
+      const nutrition = estimateNutritionFromIngredients(ingredients, 4);
+
       return {
         source: 'themealdb',
         externalId: m.idMeal,
@@ -29,7 +34,7 @@ async function searchRecipes(query, options = {}) {
         mealType: 'dinner',
         ingredients,
         instructions: m.strInstructions ? m.strInstructions.split('\r\n').filter(Boolean) : [],
-        nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        nutrition,
         imageUrl: m.strMealThumb || null,
         prepTimeMinutes: null,
         cookTimeMinutes: null,

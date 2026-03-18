@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/connection');
 const { authenticateToken } = require('../middleware/auth');
+const { estimateNutritionFromIngredients } = require('../services/nutritionEstimator');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -11,11 +12,17 @@ function syncToRecipesTable(userRecipe, userId) {
   const externalId = `user-${userId}-${userRecipe.id}`;
   const existing = db.prepare('SELECT id FROM recipes WHERE source = ? AND external_id = ?').get('user', externalId);
 
+  // Estimate nutrition from actual ingredients
+  const parsedIngredients = typeof userRecipe.ingredients === 'string'
+    ? JSON.parse(userRecipe.ingredients || '[]')
+    : (userRecipe.ingredients || []);
+  const estimatedNutrition = estimateNutritionFromIngredients(parsedIngredients, userRecipe.servings || 4);
+
   if (existing) {
     db.prepare(`
       UPDATE recipes SET
         name = ?, description = ?, cuisine = ?, meal_type = ?,
-        ingredients = ?, instructions = ?,
+        ingredients = ?, instructions = ?, nutrition = ?,
         prep_time_minutes = ?, cook_time_minutes = ?, servings = ?,
         diet_tags = ?
       WHERE id = ?
@@ -26,6 +33,7 @@ function syncToRecipesTable(userRecipe, userId) {
       userRecipe.meal_type,
       userRecipe.ingredients,
       userRecipe.instructions,
+      JSON.stringify(estimatedNutrition),
       userRecipe.prep_time_minutes,
       userRecipe.cook_time_minutes,
       userRecipe.servings,
@@ -49,7 +57,7 @@ function syncToRecipesTable(userRecipe, userId) {
       userRecipe.meal_type,
       userRecipe.ingredients,
       userRecipe.instructions,
-      JSON.stringify({ calories: 400, protein: 20, carbs: 40, fat: 15 }),
+      JSON.stringify(estimatedNutrition),
       userRecipe.prep_time_minutes,
       userRecipe.cook_time_minutes,
       userRecipe.servings,
