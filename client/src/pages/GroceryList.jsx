@@ -1,21 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Check, ExternalLink, Copy, CheckCheck, Zap, X, ArrowRight, RefreshCw } from 'lucide-react';
+import { ShoppingCart, Check, ExternalLink, Copy, CheckCheck, Zap, X, ArrowRight, RefreshCw, Store, Sparkles, Link, Trophy, Leaf, Apple, Beef, Milk, Wheat, Package, Snowflake, Droplets, Pencil, CheckCircle2, AlertTriangle, PartyPopper } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiSwapCard, AiTag } from '../components/AiResultSheet';
 
 const STORES = [
-  { id: 'amazon_wholefoods', name: 'Amazon / Whole Foods', icon: '🛒', url: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=wholefoods` },
-  { id: 'kroger', name: 'Kroger', icon: '🏪', url: (q) => `https://www.kroger.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
-  { id: 'walmart', name: 'Walmart', icon: '🏬', url: (q) => `https://www.walmart.com/search?q=${encodeURIComponent(q)}` },
-  { id: 'instacart', name: 'Instacart', icon: '🥕', url: (q) => `https://www.instacart.com/store/search/${encodeURIComponent(q)}` },
-  { id: 'target', name: 'Target', icon: '🎯', url: (q) => `https://www.target.com/s?searchTerm=${encodeURIComponent(q)}&category=5xt1a` },
-  { id: 'costco', name: 'Costco', icon: '📦', url: (q) => `https://www.costco.com/CatalogSearch?dept=All&keyword=${encodeURIComponent(q)}` },
-  { id: 'safeway', name: 'Safeway', icon: '🛍️', url: (q) => `https://www.safeway.com/shop/search-results.html?q=${encodeURIComponent(q)}` },
-  { id: 'trader_joes', name: "Trader Joe's", icon: '🌺', url: (q) => `https://www.traderjoes.com/home/search?q=${encodeURIComponent(q)}&section=products` },
-  { id: 'heb', name: 'H-E-B', icon: '🔴', url: (q) => `https://www.heb.com/search/?q=${encodeURIComponent(q)}` },
-  { id: 'fred_meyer', name: 'Fred Meyer', icon: '🟡', url: (q) => `https://www.fredmeyer.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
-  { id: 'qfc', name: 'QFC', icon: '🟢', url: (q) => `https://www.qfc.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
+  { id: 'amazon_wholefoods', name: 'Amazon / Whole Foods', url: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=wholefoods` },
+  { id: 'kroger', name: 'Kroger', url: (q) => `https://www.kroger.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
+  { id: 'walmart', name: 'Walmart', url: (q) => `https://www.walmart.com/search?q=${encodeURIComponent(q)}` },
+  { id: 'instacart', name: 'Instacart', url: (q) => `https://www.instacart.com/store/search/${encodeURIComponent(q)}` },
+  { id: 'target', name: 'Target', url: (q) => `https://www.target.com/s?searchTerm=${encodeURIComponent(q)}&category=5xt1a` },
+  { id: 'costco', name: 'Costco', url: (q) => `https://www.costco.com/CatalogSearch?dept=All&keyword=${encodeURIComponent(q)}` },
+  { id: 'safeway', name: 'Safeway', url: (q) => `https://www.safeway.com/shop/search-results.html?q=${encodeURIComponent(q)}` },
+  { id: 'trader_joes', name: "Trader Joe's", url: (q) => `https://www.traderjoes.com/home/search?q=${encodeURIComponent(q)}&section=products` },
+  { id: 'heb', name: 'H-E-B', url: (q) => `https://www.heb.com/search/?q=${encodeURIComponent(q)}` },
+  { id: 'fred_meyer', name: 'Fred Meyer', url: (q) => `https://www.fredmeyer.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
+  { id: 'qfc', name: 'QFC', url: (q) => `https://www.qfc.com/search?query=${encodeURIComponent(q)}&searchType=default_search` },
 ];
 
 function getStoreLink(storeId, itemName, organicPref) {
@@ -24,10 +24,14 @@ function getStoreLink(storeId, itemName, organicPref) {
   return store.url(query);
 }
 
-const CATEGORY_ICONS = {
-  'Produce': '🥬', 'Meat & Seafood': '🥩', 'Dairy & Eggs': '🥛', 'Bakery & Bread': '🍞',
-  'Grains & Pasta': '🌾', 'Canned & Jarred': '🥫', 'Frozen': '🧊', 'Oils & Condiments': '🫒',
-  'Spices & Seasonings': '🧂', 'Nuts & Seeds': '🥜', 'Snacks': '🍿', 'Beverages': '🥤', 'Other': '📦',
+const CategoryIcon = ({ category, size = 16 }) => {
+  const map = {
+    'Produce': Leaf, 'Meat & Seafood': Beef, 'Dairy & Eggs': Milk, 'Bakery & Bread': Wheat,
+    'Grains & Pasta': Wheat, 'Canned & Jarred': Package, 'Frozen': Snowflake, 'Oils & Condiments': Droplets,
+    'Spices & Seasonings': Sparkles, 'Nuts & Seeds': Apple, 'Snacks': Apple, 'Beverages': Droplets, 'Other': Package,
+  };
+  const Icon = map[category] || Package;
+  return <Icon size={size} className="text-brand-500" />;
 };
 
 export default function GroceryList() {
@@ -172,7 +176,7 @@ export default function GroceryList() {
   if (!list) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
-        <div className="text-6xl mb-4">🛒</div>
+        <div className="mb-4 flex justify-center"><ShoppingCart size={56} className="text-gray-300" /></div>
         <h3 className="text-xl font-bold mb-2">No grocery list yet</h3>
         <p className="text-gray-500">Generate a meal plan first, then create your grocery list</p>
       </motion.div>
@@ -201,7 +205,7 @@ export default function GroceryList() {
                   setAiSheet({ open: true, data: result, loading: false });
                 } catch (err) { setAiSheet({ open: true, data: { error: err.message }, loading: false }); }
               }} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
-                ✨ AI Shopping Tips
+                <Sparkles size={12} /> AI Shopping Tips
               </button>
             )}
           </div>
@@ -215,7 +219,7 @@ export default function GroceryList() {
         <div className="relative" ref={storeDropdownRef}>
           <button onClick={() => setShowStoreDropdown(!showStoreDropdown)} className="btn-secondary flex items-center gap-2 text-sm w-full sm:w-auto justify-between sm:justify-start">
             <span className="flex items-center gap-2">
-              <span>{STORES.find(s => s.id === currentStore)?.icon || '🛒'}</span>
+              <Store size={16} className="text-brand-500" />
               <span>{STORES.find(s => s.id === currentStore)?.name || 'Select Store'}</span>
             </span>
             <span className="text-gray-400 text-xs">▼</span>
@@ -225,7 +229,7 @@ export default function GroceryList() {
               {STORES.map(store => (
                 <button key={store.id} onClick={() => handleStoreChange(store.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${currentStore === store.id ? 'bg-brand-500/10 text-brand-600' : ''}`}>
-                  <span>{store.icon}</span> {store.name}
+                  <Store size={14} className="text-gray-400" /> {store.name}
                   {currentStore === store.id && <Check size={14} className="ml-auto text-brand-500" />}
                 </button>
               ))}
@@ -420,7 +424,7 @@ export default function GroceryList() {
           className="glass-card overflow-hidden"
         >
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
-            <span>{CATEGORY_ICONS[category] || '📦'}</span>
+            <CategoryIcon category={category} size={16} />
             <h3 className="font-semibold text-sm">{category}</h3>
             <span className="text-xs text-gray-400 ml-auto">{catItems.length} items</span>
           </div>
