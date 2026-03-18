@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame, AlertTriangle } from 'lucide-react';
+import { Sparkles, Loader2, TrendingUp, Target, Trophy, Flame, AlertTriangle, Lightbulb, RefreshCw, BarChart3 } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection } from '../components/AiResultSheet';
 
@@ -21,8 +21,28 @@ function MacroBar({ label, actual, target, color }) {
   );
 }
 
-function GradeEmoji(grade) {
-  return grade === 'A' ? '🏆' : grade === 'B' ? '⭐' : grade === 'C' ? '👍' : '⚠️';
+// Convert letter grade to encouraging progress score & label
+function gradeToProgress(grade) {
+  const map = {
+    'A': { score: 95, label: 'Excellent', color: 'text-emerald-500', bg: 'from-emerald-500 to-green-500', ring: 'stroke-emerald-500' },
+    'B': { score: 80, label: 'Great progress', color: 'text-brand-500', bg: 'from-brand-500 to-blue-500', ring: 'stroke-brand-500' },
+    'C': { score: 65, label: 'Getting there', color: 'text-amber-500', bg: 'from-amber-500 to-orange-500', ring: 'stroke-amber-500' },
+    'D': { score: 45, label: 'Room to grow', color: 'text-orange-500', bg: 'from-orange-500 to-red-400', ring: 'stroke-orange-500' },
+  };
+  return map[grade] || map['C'];
+}
+
+function ProgressRing({ score, size = 64, strokeWidth = 5, color = 'stroke-brand-500' }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-gray-200 dark:text-gray-700" />
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" strokeWidth={strokeWidth} strokeLinecap="round"
+        className={color} style={{ strokeDasharray: circumference, strokeDashoffset: offset, transition: 'stroke-dashoffset 1s ease-out' }} />
+    </svg>
+  );
 }
 
 export default function Insights() {
@@ -77,8 +97,18 @@ export default function Insights() {
         <div className="flex items-center gap-2 mb-4">
           <Target size={18} className="text-brand-500" />
           <h2 className="font-bold text-base">How am I doing?</h2>
-          <span className="ml-auto text-3xl">{GradeEmoji(ai?.actualsGrade)}</span>
-          <span className="text-xl font-bold text-brand-500">{ai?.actualsGrade || '—'}</span>
+          {ai?.actualsGrade && (() => {
+            const p = gradeToProgress(ai.actualsGrade);
+            return (
+              <div className="ml-auto flex items-center gap-2">
+                <div className="relative">
+                  <ProgressRing score={p.score} size={48} strokeWidth={4} color={p.ring} />
+                  <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold ${p.color}`}>{p.score}</span>
+                </div>
+                <span className={`text-xs font-semibold ${p.color}`}>{p.label}</span>
+              </div>
+            );
+          })()}
         </div>
         
         {actuals.days === 0 ? (
@@ -102,8 +132,18 @@ export default function Insights() {
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp size={18} className="text-purple-500" />
           <h2 className="font-bold text-base">Week Forecast</h2>
-          <span className="ml-auto text-3xl">{GradeEmoji(ai?.forecastGrade)}</span>
-          <span className="text-xl font-bold text-purple-500">{ai?.forecastGrade || '—'}</span>
+          {ai?.forecastGrade && (() => {
+            const p = gradeToProgress(ai.forecastGrade);
+            return (
+              <div className="ml-auto flex items-center gap-2">
+                <div className="relative">
+                  <ProgressRing score={p.score} size={48} strokeWidth={4} color={p.ring} />
+                  <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold ${p.color}`}>{p.score}</span>
+                </div>
+                <span className={`text-xs font-semibold ${p.color}`}>{p.label}</span>
+              </div>
+            );
+          })()}
         </div>
         
         <p className="text-xs text-gray-500 mb-3">Logged meals + remaining planned meals — projected daily averages</p>
@@ -119,11 +159,11 @@ export default function Insights() {
       {/* Tips */}
       {ai?.tips?.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-5">
-          <h3 className="font-semibold text-sm mb-3">💡 Tips to improve</h3>
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-1.5"><Lightbulb size={14} className="text-blue-500" /> Tips to improve</h3>
           <div className="space-y-2">
             {ai.tips.map((tip, i) => (
               <div key={i} className="flex items-start gap-2 text-sm bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl">
-                <span>💡</span><span>{tip}</span>
+                <Lightbulb size={14} className="text-blue-500 mt-0.5 flex-shrink-0" /><span>{tip}</span>
               </div>
             ))}
           </div>
@@ -142,7 +182,7 @@ export default function Insights() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
         className="glass-card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm flex items-center gap-2">🔄 Smart Meal Swaps</h3>
+          <h3 className="font-semibold text-sm flex items-center gap-2"><RefreshCw size={14} className="text-green-500" /> Smart Meal Swaps</h3>
           <button onClick={async () => {
             setAiSheet({ open: true, type: 'swaps', data: null, loading: true });
             try {
@@ -150,7 +190,7 @@ export default function Insights() {
               setAiSheet({ open: true, type: 'swaps', data: result, loading: false });
             } catch (err) { setAiSheet({ open: true, type: 'swaps', data: { error: err.message }, loading: false }); }
           }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-green-500 to-teal-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
-            ✨ Get Swap Ideas
+            <Sparkles size={12} /> Get Swap Ideas
           </button>
         </div>
         <p className="text-xs text-gray-500">AI suggests specific meal swaps to hit your macro targets + week-over-week comparison</p>
@@ -160,7 +200,7 @@ export default function Insights() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
         className="glass-card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm flex items-center gap-2">📈 Multi-Week Trends</h3>
+          <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 size={14} className="text-purple-500" /> Multi-Week Trends</h3>
           <button onClick={async () => {
             setAiSheet({ open: true, type: 'trends', data: null, loading: true });
             try {
@@ -168,7 +208,7 @@ export default function Insights() {
               setAiSheet({ open: true, type: 'trends', data: result, loading: false });
             } catch (err) { setAiSheet({ open: true, type: 'trends', data: { error: err.message }, loading: false }); }
           }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-brand-500 text-white hover:opacity-90 transition-opacity inline-flex items-center gap-1">
-            ✨ Analyze Trends
+            <Sparkles size={12} /> Analyze Trends
           </button>
         </div>
         <p className="text-xs text-gray-500">AI analyzes your last 4 weeks of data to find patterns and predict your trajectory</p>
@@ -184,7 +224,7 @@ export default function Insights() {
           
           {/* Current streak */}
           <div className="flex items-center gap-4 mb-4 p-3 bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl">
-            <div className="text-4xl">🔥</div>
+            <Flame size={40} className="text-orange-500" />
             <div>
               <div className="text-2xl font-bold text-orange-500">{streaks.currentStreak || 0} day{(streaks.currentStreak || 0) !== 1 ? 's' : ''}</div>
               <p className="text-xs text-gray-500">Current logging streak</p>

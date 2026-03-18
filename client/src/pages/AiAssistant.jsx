@@ -390,8 +390,8 @@ export default function AiAssistant() {
           {activeFeature === 'nutrition' && result && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
               <div className="glass-card p-6 text-center">
-                <div className="text-6xl mb-2">{result.grade === 'A' ? '🏆' : result.grade === 'B' ? '⭐' : result.grade === 'C' ? '👍' : '⚠️'}</div>
-                <div className="text-4xl font-bold text-brand-500 mb-2">Grade: {result.grade}</div>
+                <div className="text-5xl font-bold text-brand-500 mb-2">{result.overallScore || (result.grade === 'A' ? 95 : result.grade === 'B' ? 80 : result.grade === 'C' ? 65 : 45)}/100</div>
+                <p className="text-sm font-semibold text-brand-500 mb-1">{result.grade === 'A' ? 'Excellent' : result.grade === 'B' ? 'Great progress' : result.grade === 'C' ? 'Getting there' : 'Room to grow'}</p>
                 <p className="text-sm text-gray-500 max-w-md mx-auto">{result.summary}</p>
               </div>
 
