@@ -119,7 +119,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* Main content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 pb-28 md:pb-6 md:ml-20">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 pb-28 md:pb-6 md:ml-24">
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 12 }}
