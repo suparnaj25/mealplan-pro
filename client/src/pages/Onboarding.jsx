@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, User, ShieldAlert, Salad, Gauge, Heart, Globe, Database, ShoppingBag, Leaf } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, ShieldAlert, Salad, Gauge, Heart, Globe, Database, ShoppingBag, Leaf, Sunrise, Sun, Moon, Cookie, DollarSign, Scale, Sparkles, Store, Link, ClipboardList, MapPin, BookOpen, CookingPot, Ban, XCircle } from 'lucide-react';
 import { useOnboardingStore, useAuthStore } from '../store/useStore';
 import { api } from '../services/api';
 import TagInput from '../components/TagInput';
@@ -123,17 +123,17 @@ export default function Onboarding() {
             <div>
               <label className="block text-sm font-medium mb-1.5">Budget</label>
               <div className="grid grid-cols-3 gap-2">
-                {[{v:'economy',l:'💰 Economy'},{v:'moderate',l:'⚖️ Moderate'},{v:'premium',l:'✨ Premium'}].map(({v,l}) => (
-                  <button key={v} onClick={() => updateData('profile', { budgetPreference: v })} className={`py-3 rounded-xl text-sm font-medium transition-all ${data.profile.budgetPreference === v ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800'}`}>{l}</button>
+                {[{v:'economy',l:'Economy',Icon:DollarSign},{v:'moderate',l:'Moderate',Icon:Scale},{v:'premium',l:'Premium',Icon:Sparkles}].map(({v,l,Icon}) => (
+                  <button key={v} onClick={() => updateData('profile', { budgetPreference: v })} className={`py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${data.profile.budgetPreference === v ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800'}`}><Icon size={14} /> {l}</button>
                 ))}
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">Meals to Plan</label>
               <div className="grid grid-cols-2 gap-2">
-                {['breakfast','lunch','dinner','snacks'].map((m) => (
-                  <button key={m} onClick={() => updateData('profile', { mealStructure: { ...data.profile.mealStructure, [m]: !data.profile.mealStructure[m] } })} className={`py-3 rounded-xl text-sm font-medium capitalize transition-all ${data.profile.mealStructure[m] ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                    {m === 'breakfast' ? '🌅' : m === 'lunch' ? '☀️' : m === 'dinner' ? '🌙' : '🍿'} {m}
+                {[{key:'breakfast',Icon:Sunrise},{key:'lunch',Icon:Sun},{key:'dinner',Icon:Moon},{key:'snacks',Icon:Cookie}].map(({key:m,Icon:MIcon}) => (
+                  <button key={m} onClick={() => updateData('profile', { mealStructure: { ...data.profile.mealStructure, [m]: !data.profile.mealStructure[m] } })} className={`py-3 rounded-xl text-sm font-medium capitalize transition-all flex items-center justify-center gap-1.5 ${data.profile.mealStructure[m] ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                    <MIcon size={16} /> {m}
                   </button>
                 ))}
               </div>
@@ -197,14 +197,14 @@ export default function Onboarding() {
         return (
           <div className="space-y-5">
             <div className="text-center mb-2">
-              <span className="text-4xl">🌿</span>
+              <Leaf size={40} className="mx-auto text-brand-500" />
               <p className="text-sm text-gray-500 mt-2">How important is organic food to you?</p>
             </div>
             {[
-              { v: 'always_organic', l: '🌱 Always Organic', desc: 'Only show organic options when shopping' },
-              { v: 'prefer_organic', l: '🌿 Prefer Organic', desc: 'Prioritize organic but show conventional too' },
-              { v: 'no_preference', l: '⚖️ No Preference', desc: 'Show all options, I\'ll decide' },
-              { v: 'conventional', l: '💰 Conventional / Budget', desc: 'Prioritize lowest cost options' },
+              { v: 'always_organic', l: 'Always Organic', desc: 'Only show organic options when shopping' },
+              { v: 'prefer_organic', l: 'Prefer Organic', desc: 'Prioritize organic but show conventional too' },
+              { v: 'no_preference', l: 'No Preference', desc: 'Show all options, I\'ll decide' },
+              { v: 'conventional', l: 'Conventional / Budget', desc: 'Prioritize lowest cost options' },
             ].map(({ v, l, desc }) => (
               <motion.button key={v} whileTap={{ scale: 0.98 }} onClick={() => updateData('store', { organicPreference: v })}
                 className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-left ${data.store.organicPreference === v ? 'bg-brand-500/10 border-2 border-brand-500 shadow-md' : 'glass-card hover:shadow-md'}`}>
@@ -247,7 +247,7 @@ export default function Onboarding() {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium mb-2">❌ Ingredients You Dislike</label>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-1.5"><Ban size={14} className="text-red-400" /> Ingredients You Dislike</label>
               <TagInput
                 selected={data.ingredients.dislikedIngredients}
                 onChange={(items) => updateData('ingredients', { dislikedIngredients: items })}
@@ -256,7 +256,7 @@ export default function Onboarding() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">❤️ Ingredients You Love</label>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-1.5"><Heart size={14} className="text-rose-500" /> Ingredients You Love</label>
               <TagInput
                 selected={data.ingredients.lovedIngredients}
                 onChange={(items) => updateData('ingredients', { lovedIngredients: items })}
@@ -271,7 +271,7 @@ export default function Onboarding() {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium mb-2">🌍 Favorite Cuisines</label>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-1.5"><Globe size={14} className="text-brand-500" /> Favorite Cuisines</label>
               <TagToggle items={CUISINES} selected={data.cuisines.favoriteCuisines} onToggle={(c) => toggleArray('cuisines', 'favoriteCuisines', c)} />
             </div>
             <div>
