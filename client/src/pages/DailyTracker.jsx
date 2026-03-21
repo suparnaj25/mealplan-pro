@@ -61,7 +61,7 @@ export default function DailyTracker() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [quickAddForm, setQuickAddForm] = useState({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '' });
+  const [quickAddForm, setQuickAddForm] = useState({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '' });
   const [editingLog, setEditingLog] = useState(null);
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
   const [foodSearchResults, setFoodSearchResults] = useState([]);
@@ -161,9 +161,9 @@ export default function DailyTracker() {
   const handleQuickAdd = async (e) => {
     e.preventDefault();
     try {
-      await api.quickAddFood({ date, mealType: quickAddForm.mealType, description: quickAddForm.description, calories: parseInt(quickAddForm.calories) || 0, proteinG: parseInt(quickAddForm.proteinG) || 0, carbsG: parseInt(quickAddForm.carbsG) || 0, fatG: parseInt(quickAddForm.fatG) || 0 });
+      await api.quickAddFood({ date, mealType: quickAddForm.mealType, description: quickAddForm.description, calories: parseInt(quickAddForm.calories) || 0, proteinG: parseInt(quickAddForm.proteinG) || 0, carbsG: parseInt(quickAddForm.carbsG) || 0, fatG: parseInt(quickAddForm.fatG) || 0, fiberG: parseInt(quickAddForm.fiberG) || 0 });
       setShowQuickAdd(false);
-      setQuickAddForm({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '' });
+      setQuickAddForm({ mealType: 'snack', description: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '' });
       setFoodSearchResults([]);
       loadDay();
     } catch (err) { console.error(err); }
@@ -177,7 +177,7 @@ export default function DailyTracker() {
   const handleEditSave = async (logId) => {
     if (!editingLog) return;
     try {
-      await api.updateLog(logId, { status: 'modified', actualDescription: editingLog.description, calories: parseInt(editingLog.calories) || 0, proteinG: parseInt(editingLog.proteinG) || 0, carbsG: parseInt(editingLog.carbsG) || 0, fatG: parseInt(editingLog.fatG) || 0 });
+      await api.updateLog(logId, { status: 'modified', actualDescription: editingLog.description, calories: parseInt(editingLog.calories) || 0, proteinG: parseInt(editingLog.proteinG) || 0, carbsG: parseInt(editingLog.carbsG) || 0, fatG: parseInt(editingLog.fatG) || 0, fiberG: parseInt(editingLog.fiberG) || 0 });
       setEditingLog(null);
       loadDay();
     } catch (err) { console.error(err); }
@@ -241,6 +241,7 @@ export default function DailyTracker() {
                 <MacroBar label="Protein" value={data.totals.protein} target={data.targets.protein} color="bg-blue-500" />
                 <MacroBar label="Carbs" value={data.totals.carbs} target={data.targets.carbs} color="bg-amber-500" />
                 <MacroBar label="Fat" value={data.totals.fat} target={data.targets.fat} color="bg-pink-500" />
+                <MacroBar label="Fiber" value={data.totals.fiber} target={data.targets.fiber} color="bg-purple-500" />
                 {remaining.calories > 0 && (
                   <p className="text-xs text-gray-400 text-center sm:text-left">
                     {remaining.calories} kcal · {remaining.protein}g protein remaining
@@ -291,11 +292,12 @@ export default function DailyTracker() {
                             <Camera size={12} /> {analyzingPhoto ? 'Analyzing...' : 'Photo'}
                             <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
                           </label>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-5 gap-2">
                             <input type="number" value={editingLog.calories} onChange={(e) => setEditingLog({...editingLog, calories: e.target.value})} className="input-field text-xs" placeholder="Cal" />
                             <input type="number" value={editingLog.proteinG} onChange={(e) => setEditingLog({...editingLog, proteinG: e.target.value})} className="input-field text-xs" placeholder="Prot" />
                             <input type="number" value={editingLog.carbsG} onChange={(e) => setEditingLog({...editingLog, carbsG: e.target.value})} className="input-field text-xs" placeholder="Carb" />
                             <input type="number" value={editingLog.fatG} onChange={(e) => setEditingLog({...editingLog, fatG: e.target.value})} className="input-field text-xs" placeholder="Fat" />
+                            <input type="number" value={editingLog.fiberG} onChange={(e) => setEditingLog({...editingLog, fiberG: e.target.value})} className="input-field text-xs" placeholder="Fiber" />
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => handleEditSave(log.id)} className="btn-primary text-xs flex-1">Save</button>
@@ -323,7 +325,7 @@ export default function DailyTracker() {
                               <button onClick={() => handleStatusChange(log.id, 'eaten')} className="p-1.5 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 transition-colors" title="I ate this">
                                 <Check size={14} className="text-brand-500" />
                               </button>
-                              <button onClick={() => setEditingLog({ id: log.id, description: log.recipe_name, calories: String(log.calories || ''), proteinG: String(log.protein_g || ''), carbsG: String(log.carbs_g || ''), fatG: String(log.fat_g || '') })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="I ate something different">
+                              <button onClick={() => setEditingLog({ id: log.id, description: log.recipe_name, calories: String(log.calories || ''), proteinG: String(log.protein_g || ''), carbsG: String(log.carbs_g || ''), fatG: String(log.fat_g || ''), fiberG: String(log.fiber_g || '') })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="I ate something different">
                                 <Edit3 size={14} className="text-gray-400" />
                               </button>
                               <button onClick={() => handleStatusChange(log.id, 'skipped')} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Skip">
@@ -332,9 +334,14 @@ export default function DailyTracker() {
                             </div>
                           )}
                           {(log.status === 'eaten' || log.status === 'modified') && (
-                            <button onClick={() => handleDelete(log.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors">
-                              <Trash2 size={14} className="text-red-400" />
-                            </button>
+                            <div className="flex gap-1">
+                              <button onClick={() => setEditingLog({ id: log.id, description: log.actual_description || log.recipe_name, calories: String(log.calories || ''), proteinG: String(log.protein_g || ''), carbsG: String(log.carbs_g || ''), fatG: String(log.fat_g || ''), fiberG: String(log.fiber_g || '') })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Edit this meal">
+                                <Edit3 size={14} className="text-gray-400" />
+                              </button>
+                              <button onClick={() => handleDelete(log.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Delete this meal">
+                                <Trash2 size={14} className="text-red-400" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
@@ -541,6 +548,7 @@ export default function DailyTracker() {
                   <input type="number" placeholder="Protein (g)" value={quickAddForm.proteinG} onChange={(e) => setQuickAddForm({...quickAddForm, proteinG: e.target.value})} className="input-field text-sm" />
                   <input type="number" placeholder="Carbs (g)" value={quickAddForm.carbsG} onChange={(e) => setQuickAddForm({...quickAddForm, carbsG: e.target.value})} className="input-field text-sm" />
                   <input type="number" placeholder="Fat (g)" value={quickAddForm.fatG} onChange={(e) => setQuickAddForm({...quickAddForm, fatG: e.target.value})} className="input-field text-sm" />
+                  <input type="number" placeholder="Fiber (g)" value={quickAddForm.fiberG} onChange={(e) => setQuickAddForm({...quickAddForm, fiberG: e.target.value})} className="input-field text-sm" />
                 </div>
                 <button type="submit" className="btn-primary w-full">Log This Food</button>
               </form>

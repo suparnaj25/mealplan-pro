@@ -13,16 +13,17 @@ router.get('/daily', (req, res) => {
     if (!date) return res.status(400).json({ error: 'date required' });
 
     const logs = db.prepare('SELECT * FROM meal_logs WHERE user_id = ? AND date = ? ORDER BY CASE meal_type WHEN \'breakfast\' THEN 1 WHEN \'lunch\' THEN 2 WHEN \'dinner\' THEN 3 WHEN \'snack\' THEN 4 END').all(req.user.id, date);
-    const macros = db.prepare('SELECT calories, protein_g, carbs_g, fat_g FROM user_macros WHERE user_id = ?').get(req.user.id);
+    const macros = db.prepare('SELECT calories, protein_g, carbs_g, fat_g, fiber_g FROM user_macros WHERE user_id = ?').get(req.user.id);
 
     // Calculate totals
-    const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    const totals = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
     for (const log of logs) {
       if (log.status === 'eaten' || log.status === 'modified') {
         totals.calories += log.calories || 0;
         totals.protein += log.protein_g || 0;
         totals.carbs += log.carbs_g || 0;
         totals.fat += log.fat_g || 0;
+        totals.fiber += log.fiber_g || 0;
       }
     }
 
@@ -30,7 +31,7 @@ router.get('/daily', (req, res) => {
       date,
       logs,
       totals,
-      targets: macros ? { calories: macros.calories || 2000, protein: macros.protein_g || 150, carbs: macros.carbs_g || 200, fat: macros.fat_g || 67 } : { calories: 2000, protein: 150, carbs: 200, fat: 67 },
+      targets: macros ? { calories: macros.calories || 2000, protein: macros.protein_g || 150, carbs: macros.carbs_g || 200, fat: macros.fat_g || 67, fiber: macros.fiber_g || 25 } : { calories: 2000, protein: 150, carbs: 200, fat: 67, fiber: 25 },
     });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -71,12 +72,13 @@ router.post('/sync-plan', (req, res) => {
       const nutrition = item.nutrition ? JSON.parse(item.nutrition) : {};
       const scale = item.scale_factor || 1.0;
 
-      db.prepare('INSERT INTO meal_logs (id, user_id, date, meal_type, recipe_name, recipe_id, status, calories, protein_g, carbs_g, fat_g) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      db.prepare('INSERT INTO meal_logs (id, user_id, date, meal_type, recipe_name, recipe_id, status, calories, protein_g, carbs_g, fat_g, fiber_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(uuidv4(), req.user.id, date, item.meal_type, item.name, item.recipe_id, 'planned',
           Math.round((nutrition.calories || 0) * scale),
           Math.round((nutrition.protein || 0) * scale),
           Math.round((nutrition.carbs || 0) * scale),
-          Math.round((nutrition.fat || 0) * scale));
+          Math.round((nutrition.fat || 0) * scale),
+          Math.round((nutrition.fiber || 0) * scale));
       synced++;
     }
 
@@ -87,7 +89,7 @@ router.post('/sync-plan', (req, res) => {
 // PUT /api/tracker/:logId — update a meal log (mark eaten, skipped, or modified)
 router.put('/:logId', (req, res) => {
   try {
-    const { status, actualDescription, calories, proteinG, carbsG, fatG } = req.body;
+    const { status, actualDescription, calories, proteinG, carbsG, fatG, fiberG } = req.body;
 
     const log = db.prepare('SELECT * FROM meal_logs WHERE id = ? AND user_id = ?').get(req.params.logId, req.user.id);
     if (!log) return res.status(404).json({ error: 'Not found' });
@@ -98,6 +100,7 @@ router.put('/:logId', (req, res) => {
     if (proteinG !== undefined) db.prepare('UPDATE meal_logs SET protein_g = ? WHERE id = ?').run(proteinG, req.params.logId);
     if (carbsG !== undefined) db.prepare('UPDATE meal_logs SET carbs_g = ? WHERE id = ?').run(carbsG, req.params.logId);
     if (fatG !== undefined) db.prepare('UPDATE meal_logs SET fat_g = ? WHERE id = ?').run(fatG, req.params.logId);
+    if (fiberG !== undefined) db.prepare('UPDATE meal_logs SET fiber_g = ? WHERE id = ?').run(fiberG, req.params.logId);
 
     const updated = db.prepare('SELECT * FROM meal_logs WHERE id = ?').get(req.params.logId);
     res.json({ log: updated });
@@ -107,12 +110,12 @@ router.put('/:logId', (req, res) => {
 // POST /api/tracker/quick-add — add a custom food entry
 router.post('/quick-add', (req, res) => {
   try {
-    const { date, mealType, description, calories, proteinG, carbsG, fatG } = req.body;
+    const { date, mealType, description, calories, proteinG, carbsG, fatG, fiberG } = req.body;
     if (!date || !mealType) return res.status(400).json({ error: 'date and mealType required' });
 
     const id = uuidv4();
-    db.prepare('INSERT INTO meal_logs (id, user_id, date, meal_type, recipe_name, status, actual_description, calories, protein_g, carbs_g, fat_g) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, req.user.id, date, mealType, description || 'Custom food', 'eaten', description, calories || 0, proteinG || 0, carbsG || 0, fatG || 0);
+    db.prepare('INSERT INTO meal_logs (id, user_id, date, meal_type, recipe_name, status, actual_description, calories, protein_g, carbs_g, fat_g, fiber_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, req.user.id, date, mealType, description || 'Custom food', 'eaten', description, calories || 0, proteinG || 0, carbsG || 0, fatG || 0, fiberG || 0);
 
     const log = db.prepare('SELECT * FROM meal_logs WHERE id = ?').get(id);
     res.json({ log });
@@ -141,12 +144,13 @@ router.get('/weekly', (req, res) => {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
       const logs = db.prepare('SELECT * FROM meal_logs WHERE user_id = ? AND date = ? AND (status = \'eaten\' OR status = \'modified\')').all(req.user.id, dateStr);
-      const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      const totals = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
       for (const log of logs) {
         totals.calories += log.calories || 0;
         totals.protein += log.protein_g || 0;
         totals.carbs += log.carbs_g || 0;
         totals.fat += log.fat_g || 0;
+        totals.fiber += log.fiber_g || 0;
       }
       days.push({ date: dateStr, totals, mealCount: logs.length });
     }
