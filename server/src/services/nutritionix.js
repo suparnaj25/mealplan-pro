@@ -32,18 +32,20 @@ async function getNutrition(query) {
     if (!data.foods?.length) return null;
 
     // Sum all identified foods
-    let total = { calories: 0, protein: 0, carbs: 0, fat: 0, items: [] };
+    let total = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, items: [] };
     for (const food of data.foods) {
       total.calories += Math.round(food.nf_calories || 0);
       total.protein += Math.round(food.nf_protein || 0);
       total.carbs += Math.round(food.nf_total_carbohydrate || 0);
       total.fat += Math.round(food.nf_total_fat || 0);
+      total.fiber += Math.round(food.nf_dietary_fiber || 0);
       total.items.push({
         name: food.food_name,
         calories: Math.round(food.nf_calories || 0),
         protein: Math.round(food.nf_protein || 0),
         carbs: Math.round(food.nf_total_carbohydrate || 0),
         fat: Math.round(food.nf_total_fat || 0),
+        fiber: Math.round(food.nf_dietary_fiber || 0),
         serving: `${food.serving_qty} ${food.serving_unit}`,
         photo: food.photo?.thumb,
       });

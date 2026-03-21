@@ -7,19 +7,19 @@ router.use(authenticateToken);
 
 // Common meals (instant fallback)
 const COMMON_MEALS = [
-  { name: 'Chicken Breast (grilled, 6oz)', calories: 280, protein: 53, carbs: 0, fat: 6 },
-  { name: 'Salmon Fillet (baked, 6oz)', calories: 350, protein: 38, carbs: 0, fat: 20 },
-  { name: 'Brown Rice (1 cup cooked)', calories: 215, protein: 5, carbs: 45, fat: 2 },
-  { name: 'Scrambled Eggs (2 eggs)', calories: 180, protein: 12, carbs: 2, fat: 14 },
-  { name: 'Greek Yogurt (1 cup)', calories: 130, protein: 22, carbs: 9, fat: 0 },
-  { name: 'Avocado (1 whole)', calories: 240, protein: 3, carbs: 13, fat: 22 },
-  { name: 'Banana (1 medium)', calories: 105, protein: 1, carbs: 27, fat: 0 },
-  { name: 'Chicken Caesar Salad', calories: 440, protein: 38, carbs: 18, fat: 24 },
-  { name: 'Pizza (2 slices)', calories: 570, protein: 22, carbs: 60, fat: 26 },
-  { name: 'Burrito Bowl', calories: 520, protein: 28, carbs: 55, fat: 20 },
-  { name: 'Protein Shake', calories: 200, protein: 30, carbs: 10, fat: 5 },
-  { name: 'Oatmeal (1 cup cooked)', calories: 160, protein: 6, carbs: 27, fat: 3 },
-  { name: 'Tofu (firm, 1/2 block)', calories: 180, protein: 20, carbs: 4, fat: 10 },
+  { name: 'Chicken Breast (grilled, 6oz)', calories: 280, protein: 53, carbs: 0, fat: 6, fiber: 0 },
+  { name: 'Salmon Fillet (baked, 6oz)', calories: 350, protein: 38, carbs: 0, fat: 20, fiber: 0 },
+  { name: 'Brown Rice (1 cup cooked)', calories: 215, protein: 5, carbs: 45, fat: 2, fiber: 4 },
+  { name: 'Scrambled Eggs (2 eggs)', calories: 180, protein: 12, carbs: 2, fat: 14, fiber: 0 },
+  { name: 'Greek Yogurt (1 cup)', calories: 130, protein: 22, carbs: 9, fat: 0, fiber: 0 },
+  { name: 'Avocado (1 whole)', calories: 240, protein: 3, carbs: 13, fat: 22, fiber: 10 },
+  { name: 'Banana (1 medium)', calories: 105, protein: 1, carbs: 27, fat: 0, fiber: 3 },
+  { name: 'Chicken Caesar Salad', calories: 440, protein: 38, carbs: 18, fat: 24, fiber: 3 },
+  { name: 'Pizza (2 slices)', calories: 570, protein: 22, carbs: 60, fat: 26, fiber: 3 },
+  { name: 'Burrito Bowl', calories: 520, protein: 28, carbs: 55, fat: 20, fiber: 8 },
+  { name: 'Protein Shake', calories: 200, protein: 30, carbs: 10, fat: 5, fiber: 1 },
+  { name: 'Oatmeal (1 cup cooked)', calories: 160, protein: 6, carbs: 27, fat: 3, fiber: 4 },
+  { name: 'Tofu (firm, 1/2 block)', calories: 180, protein: 20, carbs: 4, fat: 10, fiber: 2 },
 ];
 
 // GET /api/food/search?q=chicken breast — multi-tier search
@@ -41,7 +41,7 @@ router.get('/search', async (req, res) => {
         // Get full nutrition for each result
         const nutrition = await nutritionix.getNutrition(nx.name);
         if (nutrition) {
-          foods.push({ name: nx.name, brand: nx.brand || '✅ Verified', image: nx.photo, calories: nutrition.calories, protein: nutrition.protein, carbs: nutrition.carbs, fat: nutrition.fat, source: 'nutritionix' });
+          foods.push({ name: nx.name, brand: nx.brand || '✅ Verified', image: nx.photo, calories: nutrition.calories, protein: nutrition.protein, carbs: nutrition.carbs, fat: nutrition.fat, fiber: nutrition.fiber || 0, source: 'nutritionix' });
         } else {
           foods.push({ name: nx.name, brand: nx.brand || '', image: nx.photo, calories: 0, protein: 0, carbs: 0, fat: 0, source: 'nutritionix' });
         }
@@ -71,7 +71,7 @@ router.get('/search', async (req, res) => {
           headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model, temperature: 0.2, max_tokens: 200,
             messages: [
-              { role: 'system', content: 'Return ONLY JSON: { "name": "food with portion", "calories": number, "protein": number, "carbs": number, "fat": number }' },
+              { role: 'system', content: 'Return ONLY JSON: { "name": "food with portion", "calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number }' },
               { role: 'user', content: `Nutrition for: ${q}` }
             ]
           }),
@@ -82,7 +82,7 @@ router.get('/search', async (req, res) => {
           const match = content.match(/\{[\s\S]*\}/);
           if (match) {
             const f = JSON.parse(match[0]);
-            foods.unshift({ name: f.name || q, brand: '✨ AI', image: null, calories: Math.round(f.calories||0), protein: Math.round(f.protein||0), carbs: Math.round(f.carbs||0), fat: Math.round(f.fat||0), source: 'ai' });
+            foods.unshift({ name: f.name || q, brand: '✨ AI', image: null, calories: Math.round(f.calories||0), protein: Math.round(f.protein||0), carbs: Math.round(f.carbs||0), fat: Math.round(f.fat||0), fiber: Math.round(f.fiber||0), source: 'ai' });
           }
         }
       } catch {}
@@ -153,7 +153,7 @@ router.post('/analyze-photo', async (req, res) => {
       if (nxData) {
         console.log(`📷 Nutritionix result: ${nxData.calories} cal, ${nxData.protein}g P`);
         return res.json({
-          food: { name: foodName, description: `Verified by Nutritionix (${nxData.items.length} items)`, calories: nxData.calories, protein: nxData.protein, carbs: nxData.carbs, fat: nxData.fat, servingSize: nxData.items.map(i => i.serving).join(', '), verified: true, items: nxData.items }
+          food: { name: foodName, description: `Verified by Nutritionix (${nxData.items.length} items)`, calories: nxData.calories, protein: nxData.protein, carbs: nxData.carbs, fat: nxData.fat, fiber: nxData.fiber || 0, servingSize: nxData.items.map(i => i.serving).join(', '), verified: true, items: nxData.items }
         });
       }
     }
@@ -166,7 +166,7 @@ router.post('/analyze-photo', async (req, res) => {
       body: JSON.stringify({
         model, temperature: 0.2, max_tokens: 200,
         messages: [
-          { role: 'system', content: 'Return ONLY JSON: { "calories": number, "protein": number, "carbs": number, "fat": number }' },
+          { role: 'system', content: 'Return ONLY JSON: { "calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number }' },
           { role: 'user', content: `Estimate nutrition for: ${foodName}` }
         ]
       }),
@@ -178,7 +178,7 @@ router.post('/analyze-photo', async (req, res) => {
       const match = mc.match(/\{[\s\S]*\}/);
       if (match) {
         const m = JSON.parse(match[0]);
-        return res.json({ food: { name: foodName, description: 'AI estimate', calories: Math.round(m.calories||0), protein: Math.round(m.protein||0), carbs: Math.round(m.carbs||0), fat: Math.round(m.fat||0), verified: false } });
+        return res.json({ food: { name: foodName, description: 'AI estimate', calories: Math.round(m.calories||0), protein: Math.round(m.protein||0), carbs: Math.round(m.carbs||0), fat: Math.round(m.fat||0), fiber: Math.round(m.fiber||0), verified: false } });
       }
     }
 
