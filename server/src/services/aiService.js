@@ -558,7 +558,8 @@ async function analyzePhoto(base64Image) {
     "calories": 450,
     "protein": 25,
     "carbs": 40,
-    "fat": 18
+    "fat": 18,
+    "fiber": 5
   },
   "confidence": "high|medium|low",
   "details": "Brief description of what you see"
@@ -605,9 +606,10 @@ Return JSON:
   "protein": 25,
   "carbs": 40,
   "fat": 18,
+  "fiber": 5,
   "items": [
-    {"name": "grilled chicken breast", "calories": 280, "protein": 42, "carbs": 0, "fat": 12},
-    {"name": "white rice (1 cup)", "calories": 170, "protein": 3, "carbs": 40, "fat": 0}
+    {"name": "grilled chicken breast", "calories": 280, "protein": 42, "carbs": 0, "fat": 12, "fiber": 0},
+    {"name": "white rice (1 cup)", "calories": 170, "protein": 3, "carbs": 40, "fat": 0, "fiber": 1}
   ],
   "confidence": "high|medium|low"
 }`
