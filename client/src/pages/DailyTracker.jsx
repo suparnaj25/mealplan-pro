@@ -310,7 +310,7 @@ export default function DailyTracker() {
                               {log.actual_description || log.recipe_name}
                             </p>
                             <p className="text-xs text-gray-400">
-                              {log.calories} kcal · {log.protein_g}g P · {log.carbs_g}g C · {log.fat_g}g F
+                              {log.calories} kcal · {log.protein_g}g P · {log.carbs_g}g C · {log.fat_g}g F{log.fiber_g > 0 ? ` · ${log.fiber_g}g Fib` : ''}
                             </p>
                           </div>
                           {/* Status badge */}

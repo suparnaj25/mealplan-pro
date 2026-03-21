@@ -339,6 +339,7 @@ export default function MealPlan() {
                           <span>{item.nutrition.protein}g P</span>
                           <span>{item.nutrition.carbs}g C</span>
                           <span>{item.nutrition.fat}g F</span>
+                          {item.nutrition.fiber > 0 && <span>{item.nutrition.fiber}g Fib</span>}
                         </div>
                       )}
                       {item.prep_time_minutes && (
