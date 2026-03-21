@@ -121,6 +121,7 @@ export default function Insights() {
               <MacroBar label="Protein" actual={actuals.avgProtein} target={targets.protein} color="bg-blue-500" />
               <MacroBar label="Carbs" actual={actuals.avgCarbs} target={targets.carbs} color="bg-green-500" />
               <MacroBar label="Fat" actual={actuals.avgFat} target={targets.fat} color="bg-yellow-500" />
+              {actuals.avgFiber > 0 && targets.fiber > 0 && <MacroBar label="Fiber" actual={actuals.avgFiber} target={targets.fiber} color="bg-purple-500" />}
             </div>
             {ai?.actualsSummary && <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">{ai.actualsSummary}</p>}
           </>
@@ -152,6 +153,7 @@ export default function Insights() {
           <MacroBar label="Protein" actual={forecast.avgProtein} target={targets.protein} color="bg-blue-400" />
           <MacroBar label="Carbs" actual={forecast.avgCarbs} target={targets.carbs} color="bg-green-400" />
           <MacroBar label="Fat" actual={forecast.avgFat} target={targets.fat} color="bg-yellow-400" />
+          {forecast.avgFiber > 0 && targets.fiber > 0 && <MacroBar label="Fiber" actual={forecast.avgFiber} target={targets.fiber} color="bg-purple-400" />}
         </div>
         {ai?.forecastSummary && <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">{ai.forecastSummary}</p>}
       </motion.div>
