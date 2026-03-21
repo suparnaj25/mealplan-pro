@@ -130,7 +130,7 @@ export default function DailyTracker() {
   };
 
   const selectFood = (food, target = 'quickAdd') => {
-    const update = { description: `${food.name}${food.brand ? ` (${food.brand})` : ''}`, calories: String(food.calories), proteinG: String(food.protein), carbsG: String(food.carbs), fatG: String(food.fat) };
+    const update = { description: `${food.name}${food.brand ? ` (${food.brand})` : ''}`, calories: String(food.calories), proteinG: String(food.protein), carbsG: String(food.carbs), fatG: String(food.fat), fiberG: String(food.fiber || '') };
     if (target === 'quickAdd') setQuickAddForm({ ...quickAddForm, ...update });
     else if (target === 'edit') setEditingLog({ ...editingLog, ...update });
     setFoodSearchResults([]);
@@ -147,7 +147,7 @@ export default function DailyTracker() {
         try {
           const data = await api.analyzePhoto(reader.result);
           if (data.food) {
-            const update = { description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat) };
+            const update = { description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat), fiberG: String(data.food.fiber || '') };
             if (target === 'quickAdd') setQuickAddForm({ ...quickAddForm, ...update });
             else if (target === 'edit') setEditingLog({ ...editingLog, ...update });
           } else { alert('Could not identify food in photo. Try again or enter manually.'); }
@@ -290,7 +290,7 @@ export default function DailyTracker() {
                           </div>
                           <label className="btn-secondary text-xs flex items-center gap-1 cursor-pointer justify-center py-1.5">
                             <Camera size={12} /> {analyzingPhoto ? 'Analyzing...' : 'Photo'}
-                            <input type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
+                            <input type="file" accept="image/*" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
                           </label>
                           <div className="grid grid-cols-5 gap-2">
                             <input type="number" value={editingLog.calories} onChange={(e) => setEditingLog({...editingLog, calories: e.target.value})} className="input-field text-xs" placeholder="Cal" />
@@ -476,7 +476,7 @@ export default function DailyTracker() {
                       setAiParsing(true); setAiParseItems(null);
                       try {
                         const result = await api.aiParseFood(quickAddForm.description);
-                        setQuickAddForm({ ...quickAddForm, description: result.description || quickAddForm.description, calories: String(result.calories || ''), proteinG: String(result.protein || ''), carbsG: String(result.carbs || ''), fatG: String(result.fat || '') });
+                        setQuickAddForm({ ...quickAddForm, description: result.description || quickAddForm.description, calories: String(result.calories || ''), proteinG: String(result.protein || ''), carbsG: String(result.carbs || ''), fatG: String(result.fat || ''), fiberG: String(result.fiber || '') });
                         if (result.items?.length > 1) setAiParseItems(result.items);
                       } catch (err) { console.error(err); }
                       finally { setAiParsing(false); }
@@ -486,7 +486,7 @@ export default function DailyTracker() {
                   </button>
                   <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer flex-1 justify-center">
                     <Camera size={15} /> {analyzingPhoto ? 'Analyzing...' : 'Snap Photo'}
-                    <input type="file" accept="image/*" capture="environment" onChange={async (e) => {
+                    <input type="file" accept="image/*" onChange={async (e) => {
                       const file = e.target.files?.[0]; if (!file) return;
                       setAnalyzingPhoto(true);
                       try {
@@ -495,7 +495,7 @@ export default function DailyTracker() {
                           try {
                             const data = await api.aiAnalyzePhoto(reader.result);
                             if (data.food) {
-                              setQuickAddForm({ ...quickAddForm, description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat) });
+                              setQuickAddForm({ ...quickAddForm, description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat), fiberG: String(data.food.fiber || '') });
                             } else { alert(data.details || 'Could not identify food. Try describing it instead.'); }
                           } catch (err) { alert(err.message); }
                           finally { setAnalyzingPhoto(false); }
