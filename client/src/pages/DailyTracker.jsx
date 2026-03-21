@@ -148,8 +148,8 @@ export default function DailyTracker() {
           const data = await api.analyzePhoto(reader.result);
           if (data.food) {
             const update = { description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat), fiberG: String(data.food.fiber || '') };
-            if (target === 'quickAdd') setQuickAddForm({ ...quickAddForm, ...update });
-            else if (target === 'edit') setEditingLog({ ...editingLog, ...update });
+            if (target === 'quickAdd') setQuickAddForm(prev => ({ ...prev, ...update }));
+            else if (target === 'edit') setEditingLog(prev => ({ ...prev, ...update }));
           } else { alert('Could not identify food in photo. Try again or enter manually.'); }
         } catch (err) { alert(err.message); }
         finally { setAnalyzingPhoto(false); }
@@ -485,7 +485,7 @@ export default function DailyTracker() {
                     <Sparkles size={15} /> {aiParsing ? 'Estimating...' : 'Estimate Nutrition'}
                   </button>
                   <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer flex-1 justify-center">
-                    <Camera size={15} /> {analyzingPhoto ? 'Analyzing...' : 'Snap Photo'}
+                    <Camera size={15} /> {analyzingPhoto ? 'Analyzing...' : 'Add Photo'}
                     <input type="file" accept="image/*" onChange={async (e) => {
                       const file = e.target.files?.[0]; if (!file) return;
                       setAnalyzingPhoto(true);
@@ -495,7 +495,7 @@ export default function DailyTracker() {
                           try {
                             const data = await api.aiAnalyzePhoto(reader.result);
                             if (data.food) {
-                              setQuickAddForm({ ...quickAddForm, description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat), fiberG: String(data.food.fiber || '') });
+                              setQuickAddForm(prev => ({ ...prev, description: data.food.name, calories: String(data.food.calories), proteinG: String(data.food.protein), carbsG: String(data.food.carbs), fatG: String(data.food.fat), fiberG: String(data.food.fiber || '') }));
                             } else { alert(data.details || 'Could not identify food. Try describing it instead.'); }
                           } catch (err) { alert(err.message); }
                           finally { setAnalyzingPhoto(false); }
@@ -530,10 +530,12 @@ export default function DailyTracker() {
                           const baseP = parseFloat(quickAddForm._baseProt || quickAddForm.proteinG);
                           const baseC = parseFloat(quickAddForm._baseCarb || quickAddForm.carbsG);
                           const baseF = parseFloat(quickAddForm._baseFat || quickAddForm.fatG);
+                          const baseFib = parseFloat(quickAddForm._baseFiber || quickAddForm.fiberG || 0);
                           setQuickAddForm({...quickAddForm,
                             calories: String(Math.round(base * m)), proteinG: String(Math.round(baseP * m)),
                             carbsG: String(Math.round(baseC * m)), fatG: String(Math.round(baseF * m)),
-                            _baseCal: base, _baseProt: baseP, _baseCarb: baseC, _baseFat: baseF, _portion: l,
+                            fiberG: String(Math.round(baseFib * m)),
+                            _baseCal: base, _baseProt: baseP, _baseCarb: baseC, _baseFat: baseF, _baseFiber: baseFib, _portion: l,
                           });
                         }} className={`py-2 rounded-lg text-xs font-medium transition-all ${quickAddForm._portion === l ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
                           {l}
