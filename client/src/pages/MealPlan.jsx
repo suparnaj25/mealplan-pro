@@ -206,6 +206,16 @@ export default function MealPlan() {
     items.filter((item) => item.day_of_week === dayIdx)
   );
 
+  // Determine today's day-of-week index (0=Mon ... 6=Sun) relative to this week
+  const today = new Date();
+  const todayDayIdx = (() => {
+    for (let i = 0; i < 7; i++) {
+      if (weekDates[i].toDateString() === today.toDateString()) return i;
+    }
+    // If today is not in this week, show all days (past or future week)
+    return today < weekDates[0] ? 7 : -1; // future week: show all; past week: show none
+  })();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -262,7 +272,10 @@ export default function MealPlan() {
       {/* Meal plan grid */}
       {!loading && plan && (
         <div className="space-y-4">
-          {DAYS.map((day, dayIdx) => (
+          {DAYS.map((day, dayIdx) => {
+            // Hide past days for the current week
+            if (dayIdx < todayDayIdx) return null;
+            return (
             <motion.div
               key={dayIdx}
               initial={{ opacity: 0, y: 10 }}
@@ -365,7 +378,8 @@ export default function MealPlan() {
                 </div>
               )}
             </motion.div>
-          ))}
+            );
+          })}
           {/* Smart Tools */}
           <div className="glass-card p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Smart Tools</p>
