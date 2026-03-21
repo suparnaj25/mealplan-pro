@@ -519,31 +519,31 @@ export default function DailyTracker() {
                   </motion.div>
                 )}
 
-                {/* Portion size picker */}
-                {(quickAddForm.calories || quickAddForm.proteinG) && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1.5">🍽️ How much did you eat?</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[{l:'½', m:0.5}, {l:'Regular', m:1}, {l:'Large', m:1.4}, {l:'XL', m:1.8}].map(({l,m}) => (
-                        <button key={l} type="button" onClick={() => {
-                          const base = parseFloat(quickAddForm._baseCal || quickAddForm.calories);
-                          const baseP = parseFloat(quickAddForm._baseProt || quickAddForm.proteinG);
-                          const baseC = parseFloat(quickAddForm._baseCarb || quickAddForm.carbsG);
-                          const baseF = parseFloat(quickAddForm._baseFat || quickAddForm.fatG);
-                          const baseFib = parseFloat(quickAddForm._baseFiber || quickAddForm.fiberG || 0);
-                          setQuickAddForm({...quickAddForm,
+                {/* Portion size picker — always visible */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">🍽️ How much did you eat?</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[{l:'½', m:0.5}, {l:'Regular', m:1}, {l:'Large', m:1.4}, {l:'XL', m:1.8}].map(({l,m}) => (
+                      <button key={l} type="button" onClick={() => {
+                        setQuickAddForm(prev => {
+                          const base = parseFloat(prev._baseCal || prev.calories || 0);
+                          const baseP = parseFloat(prev._baseProt || prev.proteinG || 0);
+                          const baseC = parseFloat(prev._baseCarb || prev.carbsG || 0);
+                          const baseF = parseFloat(prev._baseFat || prev.fatG || 0);
+                          const baseFib = parseFloat(prev._baseFiber || prev.fiberG || 0);
+                          return {...prev,
                             calories: String(Math.round(base * m)), proteinG: String(Math.round(baseP * m)),
                             carbsG: String(Math.round(baseC * m)), fatG: String(Math.round(baseF * m)),
                             fiberG: String(Math.round(baseFib * m)),
                             _baseCal: base, _baseProt: baseP, _baseCarb: baseC, _baseFat: baseF, _baseFiber: baseFib, _portion: l,
-                          });
-                        }} className={`py-2 rounded-lg text-xs font-medium transition-all ${quickAddForm._portion === l ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
+                          };
+                        });
+                      }} className={`py-2 rounded-lg text-xs font-medium transition-all ${quickAddForm._portion === l ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                        {l}
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <input type="number" placeholder="Calories" value={quickAddForm.calories} onChange={(e) => setQuickAddForm({...quickAddForm, calories: e.target.value})} className="input-field text-sm" />
