@@ -520,7 +520,7 @@ export default function DailyTracker() {
                 )}
 
                 {/* Portion size picker */}
-                {quickAddForm.calories && (
+                {(quickAddForm.calories || quickAddForm.proteinG) && (
                   <div>
                     <p className="text-xs text-gray-500 mb-1.5">🍽️ How much did you eat?</p>
                     <div className="grid grid-cols-4 gap-2">
