@@ -259,12 +259,12 @@ export default function DailyTracker() {
                 <span className="text-xs text-gray-400 ml-auto">{grouped[mealType].reduce((s, l) => s + (l.status !== 'skipped' ? (l.calories || 0) : 0), 0)} kcal</span>
               </div>
 
-              {grouped[mealType].length === 0 ? (
-                <div className="px-4 py-4 text-center">
+              {grouped[mealType].length === 0 && (
+                <div className="px-4 py-3 text-center">
                   <p className="text-sm text-gray-400 italic">No {mealType} logged</p>
-                  <button onClick={() => { setQuickAddForm({ ...quickAddForm, mealType }); setShowQuickAdd(true); }} className="text-xs text-brand-500 font-medium mt-1">+ Add {mealType}</button>
                 </div>
-              ) : (
+              )}
+              {grouped[mealType].length > 0 && (
                 <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
                   {grouped[mealType].map(log => (
                     <div key={log.id} className={`px-4 py-3 ${log.status === 'skipped' ? 'opacity-40' : ''}`}>
@@ -342,6 +342,10 @@ export default function DailyTracker() {
                   ))}
                 </div>
               )}
+              {/* Always show Add button for every meal type */}
+              <div className="px-4 py-2 border-t border-gray-50 dark:border-gray-800/50">
+                <button onClick={() => { setQuickAddForm({ ...quickAddForm, mealType }); setShowQuickAdd(true); }} className="text-xs text-brand-500 font-medium hover:text-brand-600 transition-colors">+ Add {mealType}</button>
+              </div>
             </motion.div>
           ))}
         </>
