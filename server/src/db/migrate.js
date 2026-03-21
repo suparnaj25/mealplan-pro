@@ -244,6 +244,8 @@ try {
   `); } catch(e) { /* tables already exist */ }
   // Add family_id to users for quick lookup
   try { db.exec('ALTER TABLE users ADD COLUMN family_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Add fiber_g to meal_logs for fiber tracking
+  try { db.exec('ALTER TABLE meal_logs ADD COLUMN fiber_g INTEGER DEFAULT 0'); } catch(e) { /* column already exists */ }
   // Feature 9: Family taste learning — meal feedback per user
   try { db.exec(`
     CREATE TABLE IF NOT EXISTS meal_feedback (
