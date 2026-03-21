@@ -332,9 +332,14 @@ export default function DailyTracker() {
                             </div>
                           )}
                           {(log.status === 'eaten' || log.status === 'modified') && (
-                            <button onClick={() => handleDelete(log.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors">
-                              <Trash2 size={14} className="text-red-400" />
-                            </button>
+                            <div className="flex gap-1">
+                              <button onClick={() => setEditingLog({ id: log.id, description: log.actual_description || log.recipe_name, calories: String(log.calories || ''), proteinG: String(log.protein_g || ''), carbsG: String(log.carbs_g || ''), fatG: String(log.fat_g || '') })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Edit this meal">
+                                <Edit3 size={14} className="text-gray-400" />
+                              </button>
+                              <button onClick={() => handleDelete(log.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Delete this meal">
+                                <Trash2 size={14} className="text-red-400" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
