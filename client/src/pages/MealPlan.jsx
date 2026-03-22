@@ -219,8 +219,9 @@ export default function MealPlan() {
     for (let i = 0; i < 7; i++) {
       if (weekDates[i].toDateString() === today.toDateString()) return i;
     }
-    // If today is not in this week, show all days (past or future week)
-    return today < weekDates[0] ? 7 : -1; // future week: show all; past week: show none
+    // If today is not in this week, show all days for both past and future weeks
+    // -1 means no days are hidden (dayIdx < -1 is always false)
+    return -1;
   })();
 
   return (
