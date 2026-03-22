@@ -53,7 +53,27 @@ router.post('/generate', async (req, res) => {
     // Ensure restrictions are properly parsed before passing to generator
     console.log(`🔍 Raw diet prefs from DB:`, JSON.stringify(dietPrefs));
     const preferences = { diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
+    console.log(`📋 Meal structure for generation:`, JSON.stringify(mealStructure));
+    console.log(`📋 Preferences summary: diets=${JSON.stringify(dietPrefs).slice(0,100)}, macros=${JSON.stringify(macros).slice(0,100)}`);
+    
     const generatedItems = await generateMealPlan(preferences);
+    console.log(`📋 generateMealPlan returned ${generatedItems.length} items`);
+    if (generatedItems.length > 0) {
+      console.log(`📋 First item: ${JSON.stringify(generatedItems[0])}`);
+    }
+
+    // Verify all recipe IDs exist before inserting
+    for (const item of generatedItems) {
+      const exists = db.prepare('SELECT id FROM recipes WHERE id = ?').get(item.recipeId);
+      if (!exists) {
+        console.error(`⚠️ Recipe ${item.recipeId} does not exist in DB! Skipping this item.`);
+      }
+    }
+    const validItems = generatedItems.filter(item => {
+      const exists = db.prepare('SELECT id FROM recipes WHERE id = ?').get(item.recipeId);
+      return !!exists;
+    });
+    console.log(`📋 ${validItems.length}/${generatedItems.length} items have valid recipe IDs`);
 
     // Delete existing
     const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
@@ -66,13 +86,20 @@ router.post('/generate', async (req, res) => {
     db.prepare('INSERT INTO meal_plans (id, user_id, week_start_date) VALUES (?, ?, ?)').run(planId, req.user.id, weekStart);
 
     const insert = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const item of generatedItems) {
+    for (const item of validItems) {
       insert.run(uuidv4(), planId, item.dayOfWeek, item.mealType, item.recipeId, item.servings || 1, item.scaleFactor || 1.0);
     }
+    console.log(`📋 Inserted ${validItems.length} meal plan items for plan ${planId}`);
 
     const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(planId);
+    
+    // Debug: check how many raw items exist vs joined items
+    const rawItemCount = db.prepare('SELECT COUNT(*) as cnt FROM meal_plan_items WHERE meal_plan_id = ?').get(planId);
+    console.log(`📋 Raw meal_plan_items count: ${rawItemCount?.cnt}`);
+    
     const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
       FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(planId);
+    console.log(`📋 Joined items count: ${items.length} (if less than raw count, recipes were deleted)`);
 
     res.json({ plan, items: items.map(i => {
       const sf = i.scale_factor || 1.0;
