@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot, Send, Sparkles, Brain, ShoppingBasket, DollarSign, BarChart3,
-  ChefHat, Lightbulb, ArrowRight, Loader2, MessageCircle, X, Mic, MicOff, AlertTriangle
+  ChefHat, Lightbulb, ArrowRight, Loader2, MessageCircle, X, Mic, MicOff, AlertTriangle,
+  Check, XCircle, RefreshCw, Heart, ThumbsDown, Utensils, Target, Zap
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -103,12 +104,77 @@ export default function AiAssistant() {
     try {
       const history = chatMessages.map(m => ({ role: m.role, content: m.content }));
       const data = await api.aiChat(msg, history);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      // data = { response: string, proposedActions: [], planId: number|null }
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response,
+        proposedActions: data.proposedActions || [],
+        actionStatus: {}, // track per-action: 'pending' | 'executing' | 'done' | 'dismissed'
+      }]);
     } catch (err) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I encountered an error: ${err.message}` }]);
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const executeAction = async (msgIndex, actionIndex, action) => {
+    // Mark as executing
+    setChatMessages(prev => prev.map((m, i) => {
+      if (i !== msgIndex) return m;
+      const newStatus = { ...m.actionStatus, [actionIndex]: 'executing' };
+      return { ...m, actionStatus: newStatus };
+    }));
+
+    try {
+      const result = await api.aiExecuteAction(action);
+      // Mark as done and add confirmation message
+      setChatMessages(prev => {
+        const updated = prev.map((m, i) => {
+          if (i !== msgIndex) return m;
+          const newStatus = { ...m.actionStatus, [actionIndex]: 'done' };
+          return { ...m, actionStatus: newStatus };
+        });
+        updated.push({ role: 'assistant', content: `✅ ${result.message}` });
+        return updated;
+      });
+    } catch (err) {
+      setChatMessages(prev => {
+        const updated = prev.map((m, i) => {
+          if (i !== msgIndex) return m;
+          const newStatus = { ...m.actionStatus, [actionIndex]: 'error' };
+          return { ...m, actionStatus: newStatus };
+        });
+        updated.push({ role: 'assistant', content: `❌ Failed: ${err.message}` });
+        return updated;
+      });
+    }
+  };
+
+  const dismissAction = (msgIndex, actionIndex) => {
+    setChatMessages(prev => prev.map((m, i) => {
+      if (i !== msgIndex) return m;
+      const newStatus = { ...m.actionStatus, [actionIndex]: 'dismissed' };
+      return { ...m, actionStatus: newStatus };
+    }));
+  };
+
+  const ACTION_ICONS = {
+    swap_meal: Utensils,
+    regenerate_week: RefreshCw,
+    add_dislike: ThumbsDown,
+    add_like: Heart,
+    update_restriction: Zap,
+    update_macros: Target,
+  };
+
+  const ACTION_COLORS = {
+    swap_meal: 'from-blue-500 to-indigo-500',
+    regenerate_week: 'from-purple-500 to-violet-500',
+    add_dislike: 'from-red-400 to-rose-500',
+    add_like: 'from-pink-400 to-rose-500',
+    update_restriction: 'from-amber-400 to-orange-500',
+    update_macros: 'from-emerald-400 to-green-500',
   };
 
   if (aiConfigured === null) {
@@ -187,7 +253,7 @@ export default function AiAssistant() {
                     <Bot size={48} className="mx-auto mb-4 opacity-50" />
                     <p className="text-sm">Ask me anything about meal planning, nutrition, or recipes!</p>
                     <div className="flex flex-wrap justify-center gap-2 mt-4">
-                      {['Make this week lighter', 'High protein dinner ideas', 'What snacks fit my macros?', 'I\'m craving Thai food'].map(q => (
+                      {['I don\'t like mushrooms', 'Change Monday dinner', 'Make this week lighter', 'I\'m going dairy-free', 'High protein dinner ideas'].map(q => (
                         <button key={q} onClick={() => { setChatInput(q); }}
                           className="text-xs bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-full hover:bg-brand-500/10 hover:text-brand-500 transition-colors">
                           {q}
@@ -204,12 +270,89 @@ export default function AiAssistant() {
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-brand-500 text-white rounded-br-md'
-                        : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
-                    }`}>
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <div className="max-w-[85%] space-y-2">
+                      <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-brand-500 text-white rounded-br-md'
+                          : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
+                      }`}>
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      </div>
+
+                      {/* Proposed Action Cards */}
+                      {msg.proposedActions?.length > 0 && (
+                        <div className="space-y-2 pl-1">
+                          {msg.proposedActions.map((action, ai) => {
+                            const status = msg.actionStatus?.[ai];
+                            const ActionIcon = ACTION_ICONS[action.type] || Zap;
+                            const gradient = ACTION_COLORS[action.type] || 'from-gray-400 to-gray-500';
+
+                            if (status === 'done') {
+                              return (
+                                <div key={ai} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-xs text-green-700 dark:text-green-400">
+                                  <Check size={14} /> <span className="line-through opacity-60">{action.label}</span> <span className="ml-auto font-medium">Applied</span>
+                                </div>
+                              );
+                            }
+                            if (status === 'dismissed') {
+                              return (
+                                <div key={ai} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-xs text-gray-400 line-through">
+                                  <XCircle size={14} /> {action.label}
+                                </div>
+                              );
+                            }
+                            if (status === 'executing') {
+                              return (
+                                <div key={ai} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 text-xs">
+                                  <Loader2 size={14} className="animate-spin text-brand-500" /> <span>Applying: {action.label}...</span>
+                                </div>
+                              );
+                            }
+                            if (status === 'error') {
+                              return (
+                                <div key={ai} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600">
+                                  <AlertTriangle size={14} /> Failed to apply: {action.label}
+                                </div>
+                              );
+                            }
+
+                            // Default: pending — show action card with buttons
+                            return (
+                              <motion.div
+                                key={ai}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden"
+                              >
+                                <div className="flex items-center gap-3 px-3 py-2.5">
+                                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0`}>
+                                    <ActionIcon size={14} className="text-white" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">{action.label}</p>
+                                    <p className="text-[10px] text-gray-400 capitalize">{action.type.replace(/_/g, ' ')}</p>
+                                  </div>
+                                </div>
+                                <div className="flex border-t border-gray-100 dark:border-gray-800">
+                                  <button
+                                    onClick={() => executeAction(i, ai, action)}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                                  >
+                                    <Check size={13} /> Apply
+                                  </button>
+                                  <div className="w-px bg-gray-100 dark:bg-gray-800" />
+                                  <button
+                                    onClick={() => dismissAction(i, ai)}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                  >
+                                    <X size={13} /> No thanks
+                                  </button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 ))}

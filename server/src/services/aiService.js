@@ -147,6 +147,26 @@ async function mealPlanChat(userId, userMessage, conversationHistory = []) {
     loved: ingredients ? parseJSON(ingredients.loved_ingredients, []) : [],
   };
 
+  // Get current meal plan for context
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  const weekStart = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
+  const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, weekStart);
+  let mealPlanSummary = 'No meal plan generated yet.';
+  let planItems = [];
+  if (plan) {
+    planItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
+      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(plan.id);
+    const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    mealPlanSummary = planItems.map(i => {
+      const n = parseJSON(i.nutrition, {});
+      return `${dayNames[i.day_of_week]} ${i.meal_type}: ${i.recipe_name} (${n.calories || '?'} cal, itemId:${i.item_id})`;
+    }).join('\n');
+  }
+
   const messages = [
     {
       role: 'system',
@@ -159,14 +179,40 @@ User's profile:
 - Disliked ingredients: ${context.disliked.join(', ') || 'None'}
 - Loved ingredients: ${context.loved.join(', ') || 'None'}
 
-Be helpful, concise, and practical. If the user asks to modify their meal plan, provide specific recipe suggestions that fit their preferences. Use emojis sparingly for friendliness. Keep responses under 300 words.`
+Current meal plan (this week):
+${mealPlanSummary}
+
+IMPORTANT: You MUST always respond with valid JSON in this exact format:
+{
+  "response": "Your friendly text response here",
+  "proposedActions": []
+}
+
+When the user's message implies they want to CHANGE something, include proposed actions. Action types:
+- "swap_meal": User wants to change a specific meal. Include { "type": "swap_meal", "label": "Replace [Day] [meal] with [new recipe]", "data": { "itemId": <itemId from plan above>, "newRecipeName": "suggested recipe name" } }
+- "regenerate_week": User wants a whole new week plan. Include { "type": "regenerate_week", "label": "Regenerate entire meal plan" }
+- "add_dislike": User expresses dislike for a food/ingredient. Include { "type": "add_dislike", "label": "Add [ingredient] to disliked ingredients", "data": { "ingredient": "ingredient name" } }
+- "add_like": User expresses love for a food/ingredient. Include { "type": "add_like", "label": "Add [ingredient] to loved ingredients", "data": { "ingredient": "ingredient name" } }
+- "update_restriction": User mentions a dietary restriction. Include { "type": "update_restriction", "label": "Add [restriction] to your dietary restrictions", "data": { "restriction": "restriction name" } }
+- "update_macros": User wants to change macro targets. Include { "type": "update_macros", "label": "Update [macro] target to [value]", "data": { "field": "calories|protein|carbs|fat", "value": number } }
+
+Rules:
+- Only propose actions when the user clearly implies a change. Normal questions get an empty proposedActions array.
+- You can propose multiple actions at once (e.g., dislike + swap meals containing that ingredient).
+- Keep response text under 300 words. Be friendly and use emojis sparingly.
+- ALWAYS return valid JSON. No markdown, no code fences.`
     },
     ...conversationHistory.slice(-10),
     { role: 'user', content: userMessage }
   ];
 
-  const response = await chatCompletion(messages, { temperature: 0.7, maxTokens: 1000 });
-  return response;
+  const response = await chatCompletion(messages, { temperature: 0.7, maxTokens: 1500, jsonMode: true });
+  try {
+    const parsed = JSON.parse(response);
+    return { response: parsed.response || response, proposedActions: parsed.proposedActions || [], planId: plan?.id || null };
+  } catch {
+    return { response, proposedActions: [], planId: plan?.id || null };
+  }
 }
 
 // ── Feature 4: Ingredient Substitution ──
