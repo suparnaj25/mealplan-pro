@@ -227,13 +227,159 @@ Rules:
     }
   }
 
-  if (parsed && parsed.response) {
-    console.log(`🤖 AI chat: ${parsed.proposedActions?.length || 0} proposed actions`);
-    return { response: parsed.response, proposedActions: parsed.proposedActions || [], planId: plan?.id || null };
+  const textResponse = parsed?.response || response;
+  let actions = parsed?.proposedActions || [];
+
+  // Server-side action detection fallback:
+  // If the AI described actions in text but forgot to include them in proposedActions,
+  // auto-detect and generate them from the text + user message
+  if (actions.length === 0) {
+    actions = detectActionsFromText(userMessage, textResponse, planItems, context);
   }
+
+  console.log(`🤖 AI chat: ${actions.length} proposed actions (parsed: ${parsed?.proposedActions?.length || 0}, detected: ${actions.length - (parsed?.proposedActions?.length || 0)})`);
+  console.log(`🤖 AI raw response (first 200 chars): ${response.slice(0, 200)}`);
   
-  console.log('🤖 AI chat: no structured response, falling back to plain text');
-  return { response: response, proposedActions: [], planId: plan?.id || null };
+  return { response: textResponse, proposedActions: actions, planId: plan?.id || null };
+}
+
+/**
+ * Server-side fallback: detect actionable intent from user message + AI response text
+ * and generate proposedActions that the AI forgot to include
+ */
+function detectActionsFromText(userMessage, aiResponse, planItems, context) {
+  const actions = [];
+  const msg = userMessage.toLowerCase();
+  const resp = (aiResponse || '').toLowerCase();
+
+  // Detect dislike patterns
+  const dislikePatterns = [
+    /i (?:don'?t|do not) like (\w[\w\s]*?)(?:\.|,|!|$)/i,
+    /i hate (\w[\w\s]*?)(?:\.|,|!|$)/i,
+    /i'?m not a fan of (\w[\w\s]*?)(?:\.|,|!|$)/i,
+    /(?:remove|no more|no) (\w[\w\s]*?) (?:please|from|in)/i,
+    /allergic to (\w[\w\s]*?)(?:\.|,|!|$)/i,
+  ];
+  for (const pattern of dislikePatterns) {
+    const match = userMessage.match(pattern);
+    if (match) {
+      const ingredient = match[1].trim().replace(/\s+/g, ' ');
+      if (ingredient.length > 1 && ingredient.length < 30) {
+        actions.push({
+          type: 'add_dislike',
+          label: `Add "${ingredient}" to disliked ingredients`,
+          data: { ingredient }
+        });
+        // Also propose swapping meals that contain this ingredient
+        if (planItems.length > 0) {
+          const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+          for (const item of planItems) {
+            if (item.recipe_name?.toLowerCase().includes(ingredient.toLowerCase())) {
+              actions.push({
+                type: 'swap_meal',
+                label: `Replace ${dayNames[item.day_of_week]} ${item.meal_type} (${item.recipe_name})`,
+                data: { itemId: item.item_id, newRecipeName: null }
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Detect like patterns
+  const likePatterns = [
+    /i (?:love|really like|enjoy) (\w[\w\s]*?)(?:\.|,|!|$)/i,
+    /i'?m a (?:big )?fan of (\w[\w\s]*?)(?:\.|,|!|$)/i,
+    /more (\w[\w\s]*?) (?:please|in my|meals)/i,
+  ];
+  for (const pattern of likePatterns) {
+    const match = userMessage.match(pattern);
+    if (match && !msg.includes("don't") && !msg.includes('not')) {
+      const ingredient = match[1].trim().replace(/\s+/g, ' ');
+      if (ingredient.length > 1 && ingredient.length < 30) {
+        actions.push({
+          type: 'add_like',
+          label: `Add "${ingredient}" to loved ingredients`,
+          data: { ingredient }
+        });
+      }
+    }
+  }
+
+  // Detect restriction patterns
+  const restrictionPatterns = [
+    /i'?m (?:going )?(vegan|vegetarian|pescatarian|gluten[- ]free|dairy[- ]free|keto|paleo)/i,
+    /i (?:need|want) (?:to be |to go )?(vegan|vegetarian|pescatarian|gluten[- ]free|dairy[- ]free|keto|paleo)/i,
+    /(?:switch|change) (?:to |me to )?(vegan|vegetarian|pescatarian|gluten[- ]free|dairy[- ]free|keto|paleo)/i,
+  ];
+  for (const pattern of restrictionPatterns) {
+    const match = userMessage.match(pattern);
+    if (match) {
+      const restriction = match[1].trim();
+      actions.push({
+        type: 'update_restriction',
+        label: `Add "${restriction}" to dietary restrictions`,
+        data: { restriction }
+      });
+    }
+  }
+
+  // Detect meal swap patterns
+  const dayNames = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  const mealTypes = ['breakfast','lunch','dinner','snack'];
+  const swapPatterns = [
+    /(?:change|swap|replace|switch) (\w+) (\w+)/i,
+    /(?:change|swap|replace|switch) (?:my |the )?(\w+) (\w+)/i,
+  ];
+  for (const pattern of swapPatterns) {
+    const match = userMessage.match(pattern);
+    if (match) {
+      const word1 = match[1].toLowerCase();
+      const word2 = match[2].toLowerCase();
+      let dayIdx = dayNames.indexOf(word1);
+      let mealType = mealTypes.includes(word2) ? word2 : null;
+      if (dayIdx === -1) { dayIdx = dayNames.indexOf(word2); mealType = mealTypes.includes(word1) ? word1 : null; }
+      
+      if (dayIdx >= 0 && planItems.length > 0) {
+        const item = planItems.find(i => i.day_of_week === dayIdx && (!mealType || i.meal_type === mealType));
+        if (item) {
+          const dn = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+          // Only add if not already in actions
+          if (!actions.some(a => a.type === 'swap_meal' && a.data?.itemId === item.item_id)) {
+            actions.push({
+              type: 'swap_meal',
+              label: `Replace ${dn[item.day_of_week]} ${item.meal_type} (${item.recipe_name})`,
+              data: { itemId: item.item_id, newRecipeName: null }
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Detect macro update patterns
+  const macroPatterns = [
+    /(?:set|change|update|increase|decrease) (?:my )?(?:daily )?(?:calorie|calories|cal) (?:to |target to |goal to )?(\d+)/i,
+    /(?:set|change|update|increase|decrease) (?:my )?protein (?:to |target to |goal to )?(\d+)/i,
+    /(\d+)\s*(?:g|grams?)?\s*(?:of\s+)?protein/i,
+    /(\d+)\s*(?:cal|calories|kcal)/i,
+  ];
+  const calMatch = userMessage.match(/(?:set|change|update|increase|decrease) (?:my )?(?:daily )?(?:calorie|calories|cal)\w* (?:to |target to |goal to )?(\d+)/i);
+  if (calMatch) {
+    actions.push({ type: 'update_macros', label: `Update calorie target to ${calMatch[1]}`, data: { field: 'calories', value: parseInt(calMatch[1]) } });
+  }
+  const protMatch = userMessage.match(/(?:set|change|update|increase|decrease) (?:my )?protein\w* (?:to |target to |goal to )?(\d+)/i);
+  if (protMatch) {
+    actions.push({ type: 'update_macros', label: `Update protein target to ${protMatch[1]}g`, data: { field: 'protein', value: parseInt(protMatch[1]) } });
+  }
+
+  // Detect regenerate patterns
+  if (/(?:regenerate|redo|new|fresh|start over|remake) (?:my |the |this )?(?:whole |entire )?(?:week|meal plan|plan)/i.test(userMessage)) {
+    actions.push({ type: 'regenerate_week', label: 'Regenerate entire meal plan', data: {} });
+  }
+
+  return actions;
 }
 
 // ── Feature 4: Ingredient Substitution ──
