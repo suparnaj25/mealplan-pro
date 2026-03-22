@@ -104,12 +104,21 @@ export default function AiAssistant() {
     try {
       const history = chatMessages.map(m => ({ role: m.role, content: m.content }));
       const data = await api.aiChat(msg, history);
-      // data = { response: string, proposedActions: [], planId: number|null }
+      // data = { response: string, proposedActions: [], executedActions: [], planId: number|null }
+      
+      // If actions were auto-executed server-side, mark them as done immediately
+      const autoStatus = {};
+      if (data.executedActions?.length > 0) {
+        data.executedActions.forEach((a, i) => {
+          autoStatus[i] = a.result?.success ? 'done' : 'error';
+        });
+      }
+      
       setChatMessages(prev => [...prev, {
         role: 'assistant',
         content: data.response,
         proposedActions: data.proposedActions || [],
-        actionStatus: {}, // track per-action: 'pending' | 'executing' | 'done' | 'dismissed'
+        actionStatus: autoStatus,
       }]);
     } catch (err) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I encountered an error: ${err.message}` }]);
