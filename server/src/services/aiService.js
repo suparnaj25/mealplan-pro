@@ -167,6 +167,13 @@ async function mealPlanChat(userId, userMessage, conversationHistory = []) {
     }).join('\n');
   }
 
+  // Get available recipes from DB so AI can suggest REAL recipes that exist
+  const availableRecipes = {};
+  for (const mealType of ['breakfast', 'lunch', 'dinner', 'snack']) {
+    const recipes = db.prepare('SELECT name FROM recipes WHERE meal_type = ? ORDER BY name LIMIT 30').all(mealType);
+    availableRecipes[mealType] = recipes.map(r => r.name);
+  }
+
   const messages = [
     {
       role: 'system',
@@ -189,7 +196,7 @@ IMPORTANT: You MUST always respond with valid JSON in this exact format:
 }
 
 When the user's message implies they want to CHANGE something, include proposed actions. Action types:
-- "swap_meal": User wants to change a specific meal. Include { "type": "swap_meal", "label": "Replace [Day] [meal] with [new recipe]", "data": { "itemId": <itemId from plan above>, "newRecipeName": "suggested recipe name" } }
+- "swap_meal": User wants to change a specific meal. Include { "type": "swap_meal", "label": "Replace [Day] [meal] with [new recipe]", "data": { "itemId": <itemId from plan above>, "newRecipeName": "exact recipe name from available recipes below" } }
 - "regenerate_week": User wants a whole new week plan. Include { "type": "regenerate_week", "label": "Regenerate entire meal plan" }
 - "add_dislike": User expresses dislike for a food/ingredient. Include { "type": "add_dislike", "label": "Add [ingredient] to disliked ingredients", "data": { "ingredient": "ingredient name" } }
 - "add_like": User expresses love for a food/ingredient. Include { "type": "add_like", "label": "Add [ingredient] to loved ingredients", "data": { "ingredient": "ingredient name" } }
@@ -200,7 +207,15 @@ Rules:
 - Only propose actions when the user clearly implies a change. Normal questions get an empty proposedActions array.
 - You can propose multiple actions at once (e.g., dislike + swap meals containing that ingredient).
 - Keep response text under 300 words. Be friendly and use emojis sparingly.
-- ALWAYS return valid JSON. No markdown, no code fences.`
+- ALWAYS return valid JSON. No markdown, no code fences.
+- CRITICAL for swap_meal: You MUST ONLY suggest recipe names from the AVAILABLE RECIPES list below. Do NOT invent recipe names. The newRecipeName must exactly match one of these names.
+- When describing a swap in your response text, mention the EXACT recipe name you put in newRecipeName so the user sees consistent information.
+
+AVAILABLE RECIPES IN DATABASE (use ONLY these names for swap_meal newRecipeName):
+Breakfast: ${availableRecipes.breakfast?.join(', ') || 'None'}
+Lunch: ${availableRecipes.lunch?.join(', ') || 'None'}
+Dinner: ${availableRecipes.dinner?.join(', ') || 'None'}
+Snack: ${availableRecipes.snack?.join(', ') || 'None'}`
     },
     ...conversationHistory.slice(-10),
     { role: 'user', content: userMessage }
