@@ -292,6 +292,31 @@ export default function DailyTracker() {
                             <Camera size={12} /> {analyzingPhoto ? 'Analyzing...' : 'Photo'}
                             <input type="file" accept="image/*" onChange={(e) => handlePhotoCapture(e, 'edit')} className="hidden" disabled={analyzingPhoto} />
                           </label>
+                          {/* Portion picker for edit mode */}
+                          <div>
+                            <p className="text-[10px] text-gray-500 mb-1">🍽️ Portion size</p>
+                            <div className="grid grid-cols-4 gap-1">
+                              {[{l:'½', m:0.5}, {l:'Regular', m:1}, {l:'Large', m:1.4}, {l:'XL', m:1.8}].map(({l,m}) => (
+                                <button key={l} type="button" onClick={() => {
+                                  setEditingLog(prev => {
+                                    const base = parseFloat(prev._baseCal || prev.calories || 0);
+                                    const baseP = parseFloat(prev._baseProt || prev.proteinG || 0);
+                                    const baseC = parseFloat(prev._baseCarb || prev.carbsG || 0);
+                                    const baseF = parseFloat(prev._baseFat || prev.fatG || 0);
+                                    const baseFib = parseFloat(prev._baseFiber || prev.fiberG || 0);
+                                    return {...prev,
+                                      calories: String(Math.round(base * m)), proteinG: String(Math.round(baseP * m)),
+                                      carbsG: String(Math.round(baseC * m)), fatG: String(Math.round(baseF * m)),
+                                      fiberG: String(Math.round(baseFib * m)),
+                                      _baseCal: base, _baseProt: baseP, _baseCarb: baseC, _baseFat: baseF, _baseFiber: baseFib, _portion: l,
+                                    };
+                                  });
+                                }} className={`py-1.5 rounded-lg text-[10px] font-medium transition-all ${editingLog._portion === l ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <div className="grid grid-cols-5 gap-2">
                             <input type="number" value={editingLog.calories} onChange={(e) => setEditingLog({...editingLog, calories: e.target.value})} className="input-field text-xs" placeholder="Cal" />
                             <input type="number" value={editingLog.proteinG} onChange={(e) => setEditingLog({...editingLog, proteinG: e.target.value})} className="input-field text-xs" placeholder="Prot" />
