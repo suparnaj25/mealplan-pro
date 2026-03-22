@@ -102,14 +102,13 @@ export default function MealPlan() {
     try {
       await api.updateProfile({ mealStructure: genMealTypes });
       const data = await api.generateMealPlan(weekStart);
-      console.log('🔍 Generate response:', JSON.stringify({ hasPlan: !!data.plan, itemCount: data.items?.length, firstItem: data.items?.[0]?.recipe_name }));
       setPlan(data.plan);
       setItems(data.items || []);
       if (!data.items || data.items.length === 0) {
         setGenError('Plan generated but no meals were found. Try adjusting your dietary preferences or try again.');
       }
     } catch (err) {
-      console.error('Generate error:', err);
+      console.error(err);
       setGenError(err.message || 'Failed to generate meal plan. Please try again.');
     } finally {
       setGenerating(false);
