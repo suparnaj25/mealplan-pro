@@ -538,29 +538,32 @@ async function generateMealPlan(preferences) {
         console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after restriction filter (${restrictions.join(', ')})`);
       }
 
-      // Filter out recipes containing disliked ingredients
+      // Smart disliked ingredient handling:
+      // - Only EXCLUDE recipes where a disliked ingredient is the PRIMARY ingredient (in the recipe name or first 2 ingredients)
+      // - Recipes where disliked ingredient is minor (seasoning, garnish) are kept — it can be omitted/substituted
       if (dislikedIngredients.length > 0) {
         const beforeCount = candidates.length;
         candidates = candidates.filter(recipe => {
           const recipeIngs = parseJSON(recipe.ingredients, []);
-          return !recipeIngs.some(ing => 
-            dislikedIngredients.some(d => ing.name?.toLowerCase().includes(d.toLowerCase()))
-          );
-        });
-        console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after disliked ingredient filter`);
-      }
-
-      // Fallback: allow reuse if no unused candidates, but STILL enforce restrictions + dislikes
-      if (candidates.length === 0) {
-        candidates = allRecipes.filter(recipe => {
-          if (!recipePassesRestrictions(recipe, restrictions)) return false;
-          if (dislikedIngredients.length > 0) {
-            const recipeIngs = parseJSON(recipe.ingredients, []);
-            if (recipeIngs.some(ing => dislikedIngredients.some(d => ing.name?.toLowerCase().includes(d.toLowerCase())))) return false;
+          const recipeName = (recipe.name || '').toLowerCase();
+          for (const disliked of dislikedIngredients) {
+            const d = disliked.toLowerCase();
+            // Hard exclude: disliked ingredient is in the recipe NAME (it's the star of the dish)
+            if (recipeName.includes(d)) return false;
+            // Hard exclude: disliked ingredient is one of the first 2 ingredients (primary component)
+            const primaryIngs = recipeIngs.slice(0, 2);
+            if (primaryIngs.some(ing => ing.name?.toLowerCase().includes(d))) return false;
           }
+          // Keep recipe — disliked ingredient is minor and can be omitted/substituted
           return true;
         });
-        console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions + dislikes`);
+        console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after smart disliked filter (only excludes primary ingredients)`);
+      }
+
+      // Fallback: allow reuse if no unused candidates, but STILL enforce restrictions
+      if (candidates.length === 0) {
+        candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
+        console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions`);
       }
 
       // If still no candidates, use AI to generate a recipe on-the-fly (#4)
