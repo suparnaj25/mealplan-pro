@@ -327,11 +327,19 @@ router.post('/analyze-photo', async (req, res) => {
   try {
     const { image } = req.body;
     if (!image) return res.status(400).json({ error: 'image (base64) required' });
-    const result = await ai.analyzePhoto(image);
+    
+    // Ensure proper data URL format
+    let imageData = image;
+    if (!imageData.startsWith('data:')) {
+      imageData = `data:image/jpeg;base64,${imageData}`;
+    }
+    
+    console.log(`📷 AI photo analysis: image size ${Math.round(imageData.length / 1024)}KB`);
+    const result = await ai.analyzePhoto(imageData);
     res.json(result);
   } catch (error) {
     console.error('AI analyze-photo error:', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, details: 'Photo analysis failed. The image may be too large or the AI service may be temporarily unavailable. Try a smaller image or try again.' });
   }
 });
 
