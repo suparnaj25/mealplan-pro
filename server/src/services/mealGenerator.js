@@ -376,6 +376,11 @@ async function fetchAndCacheFromInternet(mealType, restrictions) {
 async function generateMealPlan(preferences) {
   const { diets, macros, ingredients, cuisines, mealStructure, householdSize = 1 } = preferences;
 
+  // Global timeout tracker — skip AI steps if we're running too long (Render has 30s timeout)
+  const startTime = Date.now();
+  const AI_TIMEOUT_MS = 18000; // 18 seconds — leave 12s buffer for DB ops and response
+  const shouldSkipAI = () => (Date.now() - startTime) > AI_TIMEOUT_MS;
+
   const mealTypes = [];
   if (mealStructure.breakfast) mealTypes.push('breakfast');
   if (mealStructure.lunch) mealTypes.push('lunch');
@@ -424,9 +429,14 @@ async function generateMealPlan(preferences) {
     console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
   }
 
-  // Pre-fetch fresh recipes from TheMealDB (skip AI search terms to reduce latency)
-  for (const mt of mealTypes) {
-    try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
+  // Pre-fetch fresh recipes from TheMealDB (skip if running low on time)
+  if (!shouldSkipAI()) {
+    for (const mt of mealTypes) {
+      if (shouldSkipAI()) { console.log(`⏱️ Skipping TheMealDB fetch — timeout approaching`); break; }
+      try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
+    }
+  } else {
+    console.log(`⏱️ Skipping all TheMealDB fetches — timeout approaching`);
   }
 
   // Pre-load all recipes — AI-ONLY compliance (no keyword dependency)
@@ -456,8 +466,8 @@ async function generateMealPlan(preferences) {
       
       console.log(`  ${mt}: ${beforeCount} total, ${compliant.length} cached-compliant, ${rejected.length} cached-rejected, ${unchecked.length} unchecked`);
       
-      // Step 2: AI verify unchecked recipes (the ones without cached results)
-      if (unchecked.length > 0 && aiService && aiService.isConfigured()) {
+      // Step 2: AI verify unchecked recipes (skip if timeout approaching)
+      if (unchecked.length > 0 && aiService && aiService.isConfigured() && !shouldSkipAI()) {
         try {
           const verified = await aiVerifyRecipeCompliance(unchecked, restrictions);
           
@@ -648,10 +658,12 @@ async function generateMealPlan(preferences) {
     console.log(`  ${days[day]}: ${dayTotals.calories} cal/person, ${dayTotals.protein}g P, ${dayTotals.carbs}g C, ${dayTotals.fat}g F (${householdSize} servings each meal)`);
   }
 
-  console.log(`✅ Generated ${items.length} meals, now AI-optimizing...`);
+  const elapsed = Date.now() - startTime;
+  console.log(`✅ Generated ${items.length} meals in ${elapsed}ms, now AI-optimizing...`);
 
   // AI Post-Optimization: Ask AI to adjust ingredient quantities per day to hit exact targets
-  if (aiService && aiService.isConfigured()) {
+  // Skip if we're running low on time (this step alone makes 7 AI calls)
+  if (aiService && aiService.isConfigured() && !shouldSkipAI()) {
     try {
       const optimizedItems = await aiOptimizeDailyPlan(items, dailyTargets, recipeCache, mealTypes);
       console.log(`🤖 AI optimization complete`);
