@@ -147,24 +147,66 @@ async function mealPlanChat(userId, userMessage, conversationHistory = []) {
     loved: ingredients ? parseJSON(ingredients.loved_ingredients, []) : [],
   };
 
-  // Get current meal plan for context
+  // Get current AND next week meal plans for context
   const now = new Date();
   const day = now.getDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + mondayOffset);
   const weekStart = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
+  
+  // Next week's Monday
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(monday.getDate() + 7);
+  const nextWeekStart = `${nextMonday.getFullYear()}-${String(nextMonday.getMonth()+1).padStart(2,'0')}-${String(nextMonday.getDate()).padStart(2,'0')}`;
+
   const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, weekStart);
+  const nextPlan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, nextWeekStart);
+  
   let mealPlanSummary = 'No meal plan generated yet.';
-  let planItems = [];
+  let planItems = []; // all items from both weeks for action detection
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  
+  // Format a week's items into summary text
+  const formatWeekItems = (items) => items.map(i => {
+    const n = parseJSON(i.nutrition, {});
+    return `${dayNames[i.day_of_week]} ${i.meal_type}: ${i.recipe_name} (${n.calories || '?'} cal, itemId:${i.item_id})`;
+  }).join('\n');
+
+  let thisWeekSummary = '';
+  let nextWeekSummary = '';
+  
   if (plan) {
-    planItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
+    const thisWeekItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
       FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(plan.id);
-    const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    mealPlanSummary = planItems.map(i => {
-      const n = parseJSON(i.nutrition, {});
-      return `${dayNames[i.day_of_week]} ${i.meal_type}: ${i.recipe_name} (${n.calories || '?'} cal, itemId:${i.item_id})`;
-    }).join('\n');
+    planItems = [...thisWeekItems];
+    thisWeekSummary = formatWeekItems(thisWeekItems);
+  }
+  
+  if (nextPlan) {
+    const nextWeekItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
+      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(nextPlan.id);
+    // Tag next week items so detectActionsFromText can distinguish them
+    nextWeekItems.forEach(i => { i.isNextWeek = true; });
+    planItems = [...planItems, ...nextWeekItems];
+    nextWeekSummary = formatWeekItems(nextWeekItems);
+  }
+  
+  // Build combined summary
+  const sundayOfThisWeek = new Date(monday);
+  sundayOfThisWeek.setDate(monday.getDate() + 6);
+  const sundayOfNextWeek = new Date(nextMonday);
+  sundayOfNextWeek.setDate(nextMonday.getDate() + 6);
+  const fmtDate = (d) => `${d.getMonth()+1}/${d.getDate()}`;
+  
+  if (thisWeekSummary || nextWeekSummary) {
+    mealPlanSummary = '';
+    if (thisWeekSummary) {
+      mealPlanSummary += `THIS WEEK (${fmtDate(monday)} - ${fmtDate(sundayOfThisWeek)}):\n${thisWeekSummary}`;
+    }
+    if (nextWeekSummary) {
+      mealPlanSummary += `${thisWeekSummary ? '\n\n' : ''}NEXT WEEK (${fmtDate(nextMonday)} - ${fmtDate(sundayOfNextWeek)}):\n${nextWeekSummary}`;
+    }
   }
 
   // Get available recipes from DB so AI can suggest REAL recipes that exist
@@ -186,8 +228,10 @@ User's profile:
 - Disliked ingredients: ${context.disliked.join(', ') || 'None'}
 - Loved ingredients: ${context.loved.join(', ') || 'None'}
 
-Current meal plan (this week):
+Meal plans:
 ${mealPlanSummary}
+
+IMPORTANT: The meal plans above show BOTH this week and next week (if available). When the user says "next week", use the itemIds from the NEXT WEEK section. When they say "this week" or don't specify, use THIS WEEK's itemIds.
 
 IMPORTANT: You MUST always respond with valid JSON in this exact format:
 {
