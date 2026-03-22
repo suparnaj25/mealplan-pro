@@ -101,7 +101,7 @@ router.post('/generate', async (req, res) => {
       FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(planId);
     console.log(`📋 Joined items count: ${items.length} (if less than raw count, recipes were deleted)`);
 
-    res.json({ plan, items: items.map(i => {
+    const responseItems = items.map(i => {
       const sf = i.scale_factor || 1.0;
       const nutrition = parseJSON(i.nutrition, {});
       return {
@@ -118,7 +118,9 @@ router.post('/generate', async (req, res) => {
         locked: !!i.locked,
         scale_factor: sf,
       };
-    }) });
+    });
+    console.log(`📋 RESPONSE: plan=${!!plan}, items=${responseItems.length}`);
+    res.json({ plan, items: responseItems });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
