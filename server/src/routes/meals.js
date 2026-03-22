@@ -50,7 +50,7 @@ router.post('/generate', async (req, res) => {
     const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(req.user.id);
     const householdSize = profile?.household_size || 1;
 
-    const preferences = { diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
+    const preferences = { userId: req.user.id, diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
     const generatedItems = await generateMealPlan(preferences);
 
     // Delete existing
@@ -149,18 +149,35 @@ router.post('/regenerate-slot', (req, res) => {
     const restrictions = dietPrefs?.restrictions ? (typeof dietPrefs.restrictions === 'string' ? JSON.parse(dietPrefs.restrictions) : dietPrefs.restrictions) : [];
 
     const usedIds = db.prepare('SELECT recipe_id FROM meal_plan_items WHERE meal_plan_id = ? AND id != ?').all(planId, itemId).map(r => r.recipe_id);
-    const allRecipes = db.prepare('SELECT id, ingredients FROM recipes WHERE meal_type = ?').all(item.meal_type);
+    const allRecipes = db.prepare('SELECT id, ingredients, name FROM recipes WHERE meal_type = ?').all(item.meal_type);
     
-    // Filter by restrictions AND exclude used/current recipes
+    // Load disliked ingredients
+    const ingredientPrefs = db.prepare('SELECT disliked_ingredients FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id);
+    const dislikedIngredients = ingredientPrefs ? parseJSON(ingredientPrefs.disliked_ingredients, []) : [];
+    
+    // Helper: check if recipe contains disliked ingredients
+    const hasDisliked = (recipe) => {
+      if (dislikedIngredients.length === 0) return false;
+      const ings = parseJSON(recipe.ingredients, []);
+      const name = (recipe.name || '').toLowerCase();
+      return dislikedIngredients.some(d => {
+        const dl = d.toLowerCase();
+        return name.includes(dl) || ings.some(ing => ing.name?.toLowerCase().includes(dl));
+      });
+    };
+    
+    // Filter by restrictions, disliked ingredients, AND exclude used/current recipes
     let candidates = allRecipes
       .filter(r => !usedIds.includes(r.id) && r.id !== item.recipe_id)
-      .filter(r => recipePassesRestrictions(r, restrictions));
+      .filter(r => recipePassesRestrictions(r, restrictions))
+      .filter(r => !hasDisliked(r));
     
-    // If no candidates after filtering, allow reuse but still enforce restrictions
+    // If no candidates after filtering, allow reuse but still enforce restrictions + disliked
     if (candidates.length === 0) {
       candidates = allRecipes
         .filter(r => r.id !== item.recipe_id)
-        .filter(r => recipePassesRestrictions(r, restrictions));
+        .filter(r => recipePassesRestrictions(r, restrictions))
+        .filter(r => !hasDisliked(r));
     }
     
     const pick = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : null;
