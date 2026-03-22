@@ -167,33 +167,42 @@ async function executeActionForUser(userId, action) {
 
       const userIngPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(userId);
       const disliked = userIngPrefs ? parseJSON(userIngPrefs.disliked_ingredients, []) : [];
+      
+      // Helper: check if a recipe contains any disliked ingredients
+      const hasDisliked = (recipe) => {
+        if (disliked.length === 0) return false;
+        const ings = parseJSON(recipe.ingredients, []);
+        const name = (recipe.name || '').toLowerCase();
+        return disliked.some(d => {
+          const dl = d.toLowerCase();
+          return name.includes(dl) || ings.some(ing => ing.name?.toLowerCase().includes(dl));
+        });
+      };
 
       let newRecipe = null;
       if (newRecipeName) {
-        // Strategy 1: Exact name match
-        newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) = ? AND id != ?").get(newRecipeName.toLowerCase(), item.recipe_id);
-        // Strategy 2: Partial match
+        // Strategy 1: Exact name match (skip if contains disliked)
+        const s1 = db.prepare("SELECT * FROM recipes WHERE LOWER(name) = ? AND id != ?").get(newRecipeName.toLowerCase(), item.recipe_id);
+        if (s1 && !hasDisliked(s1)) newRecipe = s1;
+        // Strategy 2: Partial match (skip if contains disliked)
         if (!newRecipe) {
-          newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND id != ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`, item.recipe_id);
+          const s2 = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND id != ? LIMIT 5").all(`%${newRecipeName.toLowerCase()}%`, item.recipe_id);
+          newRecipe = s2.find(r => !hasDisliked(r)) || null;
         }
-        // Strategy 3: Word-by-word match within same meal type
+        // Strategy 3: Word-by-word match within same meal type (skip if contains disliked)
         if (!newRecipe) {
           const words = newRecipeName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
           for (const word of words) {
-            newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND meal_type = ? AND id != ? LIMIT 1").get(`%${word}%`, item.meal_type, item.recipe_id);
+            const s3 = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND meal_type = ? AND id != ? LIMIT 5").all(`%${word}%`, item.meal_type, item.recipe_id);
+            newRecipe = s3.find(r => !hasDisliked(r)) || null;
             if (newRecipe) break;
           }
         }
       }
       // Strategy 4: Random recipe of same meal type, avoiding disliked ingredients
       if (!newRecipe) {
-        const candidates = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 10").all(item.meal_type, item.recipe_id);
-        if (disliked.length > 0) {
-          newRecipe = candidates.find(c => {
-            const ings = parseJSON(c.ingredients, []);
-            return !ings.some(ing => disliked.some(d => ing.name?.toLowerCase().includes(d.toLowerCase())));
-          });
-        }
+        const candidates = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 20").all(item.meal_type, item.recipe_id);
+        newRecipe = candidates.find(c => !hasDisliked(c));
         if (!newRecipe && candidates.length > 0) newRecipe = candidates[0];
       }
       if (newRecipe) {
@@ -224,7 +233,7 @@ async function executeActionForUser(userId, action) {
       const mealStructure = db.prepare('SELECT * FROM user_meal_structure WHERE user_id = ?').get(userId) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0 };
       const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(userId);
       const householdSize = profile?.household_size || 1;
-      const preferences = { diets: dietPrefs, macros: macrosRow, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
+      const preferences = { userId, diets: dietPrefs, macros: macrosRow, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
       
       const generatedItems = await generateMealPlan(preferences);
       
@@ -255,56 +264,8 @@ router.post('/execute-action', async (req, res) => {
 
     switch (action.type) {
       case 'swap_meal': {
-        // Regenerate a specific meal slot with a new recipe
-        const { itemId, newRecipeName } = action.data || {};
-        if (!itemId) return res.status(400).json({ error: 'itemId required for swap_meal' });
-        
-        // Find the meal plan item
-        const item = db.prepare('SELECT mpi.*, mp.user_id, mp.id as plan_id FROM meal_plan_items mpi JOIN meal_plans mp ON mp.id = mpi.meal_plan_id WHERE mpi.id = ?').get(itemId);
-        if (!item || item.user_id !== req.user.id) return res.status(404).json({ error: 'Meal plan item not found' });
-        
-        // Get user's disliked ingredients to avoid them
-        const userIngPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id);
-        const disliked = userIngPrefs ? parseJSON(userIngPrefs.disliked_ingredients, []) : [];
-        
-        // Search for a recipe matching the suggested name (try multiple strategies)
-        let newRecipe = null;
-        if (newRecipeName) {
-          // Strategy 1: Exact-ish match
-          newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`);
-          
-          // Strategy 2: Try each word in the name
-          if (!newRecipe) {
-            const words = newRecipeName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-            for (const word of words) {
-              newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND meal_type = ? AND id != ? LIMIT 1").get(`%${word}%`, item.meal_type, item.recipe_id);
-              if (newRecipe) break;
-            }
-          }
-        }
-        
-        // Strategy 3: Find any different recipe for this meal type, avoiding disliked ingredients
-        if (!newRecipe) {
-          const candidates = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 10").all(item.meal_type, item.recipe_id);
-          // Filter out recipes containing disliked ingredients
-          if (disliked.length > 0) {
-            newRecipe = candidates.find(c => {
-              const ings = parseJSON(c.ingredients, []);
-              return !ings.some(ing => disliked.some(d => ing.name?.toLowerCase().includes(d.toLowerCase())));
-            });
-          }
-          if (!newRecipe && candidates.length > 0) {
-            newRecipe = candidates[0]; // fallback to first random
-          }
-        }
-        
-        if (newRecipe) {
-          db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(newRecipe.id, itemId);
-          console.log(`🔄 Swapped meal item ${itemId}: recipe ${item.recipe_id} → ${newRecipe.id} (${newRecipe.name})`);
-          result = { success: true, message: `Swapped to "${newRecipe.name}"` };
-        } else {
-          result = { success: false, message: 'No alternative recipe found for this meal type' };
-        }
+        // Delegate to executeActionForUser which has the full disliked-ingredient-aware logic
+        result = await executeActionForUser(req.user.id, action);
         break;
       }
 
