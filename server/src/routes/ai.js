@@ -26,15 +26,177 @@ router.post('/optimize', async (req, res) => {
   }
 });
 
-// POST /api/ai/chat — Feature 3: Natural Language Chat
+// POST /api/ai/chat — Feature 3: Natural Language Chat (with actionable proposals)
 router.post('/chat', async (req, res) => {
   try {
     const { message, history = [] } = req.body;
     if (!message) return res.status(400).json({ error: 'message required' });
-    const response = await ai.mealPlanChat(req.user.id, message, history);
-    res.json({ response });
+    const result = await ai.mealPlanChat(req.user.id, message, history);
+    // result = { response: string, proposedActions: [], planId: number|null }
+    res.json(result);
   } catch (error) {
     console.error('AI chat error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/ai/execute-action — Execute a confirmed action from chat
+router.post('/execute-action', async (req, res) => {
+  try {
+    const { action } = req.body;
+    if (!action || !action.type) return res.status(400).json({ error: 'action with type required' });
+
+    const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+    let result = { success: false, message: 'Unknown action type' };
+
+    switch (action.type) {
+      case 'swap_meal': {
+        // Regenerate a specific meal slot with a new recipe
+        const { itemId, newRecipeName } = action.data || {};
+        if (!itemId) return res.status(400).json({ error: 'itemId required for swap_meal' });
+        
+        // Find the meal plan item
+        const item = db.prepare('SELECT mpi.*, mp.user_id, mp.id as plan_id FROM meal_plan_items mpi JOIN meal_plans mp ON mp.id = mpi.meal_plan_id WHERE mpi.id = ?').get(itemId);
+        if (!item || item.user_id !== req.user.id) return res.status(404).json({ error: 'Meal plan item not found' });
+        
+        // Search for a recipe matching the suggested name
+        let newRecipe = null;
+        if (newRecipeName) {
+          newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`);
+        }
+        
+        if (newRecipe) {
+          // Swap to the found recipe
+          db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(newRecipe.id, itemId);
+          result = { success: true, message: `Swapped to "${newRecipe.name}"` };
+        } else {
+          // Regenerate the slot with a random recipe matching the meal type
+          const mealType = item.meal_type;
+          const currentRecipeId = item.recipe_id;
+          const alt = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 1").get(mealType, currentRecipeId);
+          if (alt) {
+            db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(alt.id, itemId);
+            result = { success: true, message: `Swapped to "${alt.name}"` };
+          } else {
+            result = { success: false, message: 'No alternative recipe found for this meal type' };
+          }
+        }
+        break;
+      }
+
+      case 'regenerate_week': {
+        // Get current week start
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? -6 : 1 - day;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        const weekStart = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
+        
+        // Delete existing plan and regenerate
+        const existingPlan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
+        if (existingPlan) {
+          db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingPlan.id);
+          db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingPlan.id);
+        }
+        
+        // Trigger regeneration via the meal generator
+        const mealGenerator = require('../services/mealGenerator');
+        const newPlan = await mealGenerator.generateMealPlan(req.user.id, weekStart);
+        result = { success: true, message: 'Meal plan regenerated for the week!', planId: newPlan?.id };
+        break;
+      }
+
+      case 'add_dislike': {
+        const { ingredient } = action.data || {};
+        if (!ingredient) return res.status(400).json({ error: 'ingredient required for add_dislike' });
+        
+        const existing = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id);
+        let disliked = existing ? parseJSON(existing.disliked_ingredients, []) : [];
+        const normalized = ingredient.toLowerCase().trim();
+        if (!disliked.map(d => d.toLowerCase()).includes(normalized)) {
+          disliked.push(ingredient.trim());
+          if (existing) {
+            db.prepare('UPDATE user_ingredient_preferences SET disliked_ingredients = ? WHERE user_id = ?').run(JSON.stringify(disliked), req.user.id);
+          } else {
+            db.prepare('INSERT INTO user_ingredient_preferences (user_id, disliked_ingredients, loved_ingredients) VALUES (?, ?, ?)').run(req.user.id, JSON.stringify(disliked), '[]');
+          }
+          result = { success: true, message: `Added "${ingredient}" to your disliked ingredients` };
+        } else {
+          result = { success: true, message: `"${ingredient}" is already in your disliked ingredients` };
+        }
+        break;
+      }
+
+      case 'add_like': {
+        const { ingredient } = action.data || {};
+        if (!ingredient) return res.status(400).json({ error: 'ingredient required for add_like' });
+        
+        const existing = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id);
+        let loved = existing ? parseJSON(existing.loved_ingredients, []) : [];
+        const normalized = ingredient.toLowerCase().trim();
+        if (!loved.map(l => l.toLowerCase()).includes(normalized)) {
+          loved.push(ingredient.trim());
+          if (existing) {
+            db.prepare('UPDATE user_ingredient_preferences SET loved_ingredients = ? WHERE user_id = ?').run(JSON.stringify(loved), req.user.id);
+          } else {
+            db.prepare('INSERT INTO user_ingredient_preferences (user_id, disliked_ingredients, loved_ingredients) VALUES (?, ?, ?)').run(req.user.id, '[]', JSON.stringify(loved));
+          }
+          result = { success: true, message: `Added "${ingredient}" to your loved ingredients` };
+        } else {
+          result = { success: true, message: `"${ingredient}" is already in your loved ingredients` };
+        }
+        break;
+      }
+
+      case 'update_restriction': {
+        const { restriction } = action.data || {};
+        if (!restriction) return res.status(400).json({ error: 'restriction required for update_restriction' });
+        
+        const existing = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id);
+        let restrictions = existing ? parseJSON(existing.restrictions, []) : [];
+        const normalized = restriction.toLowerCase().trim();
+        if (!restrictions.map(r => r.toLowerCase()).includes(normalized)) {
+          restrictions.push(restriction.trim());
+          if (existing) {
+            db.prepare('UPDATE user_diet_preferences SET restrictions = ? WHERE user_id = ?').run(JSON.stringify(restrictions), req.user.id);
+          } else {
+            db.prepare('INSERT INTO user_diet_preferences (user_id, restrictions, diets) VALUES (?, ?, ?)').run(req.user.id, JSON.stringify(restrictions), '[]');
+          }
+          result = { success: true, message: `Added "${restriction}" to your dietary restrictions` };
+        } else {
+          result = { success: true, message: `"${restriction}" is already in your dietary restrictions` };
+        }
+        break;
+      }
+
+      case 'update_macros': {
+        const { field, value } = action.data || {};
+        if (!field || value === undefined) return res.status(400).json({ error: 'field and value required for update_macros' });
+        
+        const fieldMap = { calories: 'calories', protein: 'protein_g', carbs: 'carbs_g', fat: 'fat_g' };
+        const dbField = fieldMap[field];
+        if (!dbField) return res.status(400).json({ error: `Invalid macro field: ${field}` });
+        
+        const existing = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id);
+        if (existing) {
+          db.prepare(`UPDATE user_macros SET ${dbField} = ? WHERE user_id = ?`).run(value, req.user.id);
+        } else {
+          const defaults = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 67 };
+          defaults[dbField] = value;
+          db.prepare('INSERT INTO user_macros (user_id, calories, protein_g, carbs_g, fat_g) VALUES (?, ?, ?, ?, ?)').run(req.user.id, defaults.calories, defaults.protein_g, defaults.carbs_g, defaults.fat_g);
+        }
+        result = { success: true, message: `Updated ${field} target to ${value}${field === 'calories' ? ' kcal' : 'g'}` };
+        break;
+      }
+
+      default:
+        result = { success: false, message: `Unknown action type: ${action.type}` };
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('AI execute-action error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

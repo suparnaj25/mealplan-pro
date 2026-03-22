@@ -213,6 +213,9 @@ class ApiService {
   aiChat(message, history = []) {
     return this.request('/ai/chat', { method: 'POST', body: JSON.stringify({ message, history }) });
   }
+  aiExecuteAction(action) {
+    return this.request('/ai/execute-action', { method: 'POST', body: JSON.stringify({ action }) });
+  }
   aiSubstitutions(recipeId) {
     return this.request('/ai/substitutions', { method: 'POST', body: JSON.stringify({ recipeId }) });
   }
