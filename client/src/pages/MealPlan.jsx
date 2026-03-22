@@ -93,16 +93,23 @@ export default function MealPlan() {
 
   const openGenerateModal = () => setShowGenModal(true);
 
+  const [genError, setGenError] = useState(null);
+
   const handleGenerate = async () => {
     setShowGenModal(false);
     setGenerating(true);
+    setGenError(null);
     try {
       await api.updateProfile({ mealStructure: genMealTypes });
       const data = await api.generateMealPlan(weekStart);
       setPlan(data.plan);
       setItems(data.items || []);
+      if (!data.items || data.items.length === 0) {
+        setGenError('Plan generated but no meals were found. Try adjusting your dietary preferences or try again.');
+      }
     } catch (err) {
       console.error(err);
+      setGenError(err.message || 'Failed to generate meal plan. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -212,8 +219,9 @@ export default function MealPlan() {
     for (let i = 0; i < 7; i++) {
       if (weekDates[i].toDateString() === today.toDateString()) return i;
     }
-    // If today is not in this week, show all days (past or future week)
-    return today < weekDates[0] ? 7 : -1; // future week: show all; past week: show none
+    // If today is not in this week, show all days for both past and future weeks
+    // -1 means no days are hidden (dayIdx < -1 is always false)
+    return -1;
   })();
 
   return (
@@ -255,6 +263,31 @@ export default function MealPlan() {
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
         </div>
+      )}
+
+      {/* Generating overlay */}
+      {generating && (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500 animate-pulse">Generating your meal plan... this may take a moment</p>
+        </div>
+      )}
+
+      {/* Error message */}
+      {genError && !generating && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-red-500 text-lg">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm text-red-700 dark:text-red-300 font-medium">{genError}</p>
+            <button onClick={openGenerateModal} className="text-xs text-red-500 hover:text-red-600 mt-2 underline">
+              Try again
+            </button>
+          </div>
+          <button onClick={() => setGenError(null)} className="text-red-400 hover:text-red-500 p-1">
+            <X size={16} />
+          </button>
+        </motion.div>
       )}
 
       {/* Empty state */}

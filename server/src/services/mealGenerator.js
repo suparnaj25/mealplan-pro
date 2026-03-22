@@ -424,7 +424,7 @@ async function generateMealPlan(preferences) {
     console.log(`⚠️ VEGAN/VEGETARIAN mode active — all meat recipes will be excluded`);
   }
 
-  // Pre-fetch fresh recipes from TheMealDB (skip AI search terms to reduce latency)
+  // Pre-fetch fresh recipes from TheMealDB
   for (const mt of mealTypes) {
     try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
   }
@@ -456,7 +456,7 @@ async function generateMealPlan(preferences) {
       
       console.log(`  ${mt}: ${beforeCount} total, ${compliant.length} cached-compliant, ${rejected.length} cached-rejected, ${unchecked.length} unchecked`);
       
-      // Step 2: AI verify unchecked recipes (the ones without cached results)
+      // Step 2: AI verify unchecked recipes
       if (unchecked.length > 0 && aiService && aiService.isConfigured()) {
         try {
           const verified = await aiVerifyRecipeCompliance(unchecked, restrictions);
