@@ -207,12 +207,33 @@ Rules:
   ];
 
   const response = await chatCompletion(messages, { temperature: 0.7, maxTokens: 1500, jsonMode: true });
+  
+  // Robust JSON extraction — handle markdown fences, partial JSON, etc.
+  let parsed = null;
   try {
-    const parsed = JSON.parse(response);
-    return { response: parsed.response || response, proposedActions: parsed.proposedActions || [], planId: plan?.id || null };
+    parsed = JSON.parse(response);
   } catch {
-    return { response, proposedActions: [], planId: plan?.id || null };
+    // Try extracting JSON from markdown code fences
+    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      try { parsed = JSON.parse(jsonMatch[1].trim()); } catch {}
+    }
+    // Try finding JSON object in the response
+    if (!parsed) {
+      const braceMatch = response.match(/\{[\s\S]*\}/);
+      if (braceMatch) {
+        try { parsed = JSON.parse(braceMatch[0]); } catch {}
+      }
+    }
   }
+
+  if (parsed && parsed.response) {
+    console.log(`🤖 AI chat: ${parsed.proposedActions?.length || 0} proposed actions`);
+    return { response: parsed.response, proposedActions: parsed.proposedActions || [], planId: plan?.id || null };
+  }
+  
+  console.log('🤖 AI chat: no structured response, falling back to plain text');
+  return { response: response, proposedActions: [], planId: plan?.id || null };
 }
 
 // ── Feature 4: Ingredient Substitution ──

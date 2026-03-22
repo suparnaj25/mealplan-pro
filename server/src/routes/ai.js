@@ -59,27 +59,47 @@ router.post('/execute-action', async (req, res) => {
         const item = db.prepare('SELECT mpi.*, mp.user_id, mp.id as plan_id FROM meal_plan_items mpi JOIN meal_plans mp ON mp.id = mpi.meal_plan_id WHERE mpi.id = ?').get(itemId);
         if (!item || item.user_id !== req.user.id) return res.status(404).json({ error: 'Meal plan item not found' });
         
-        // Search for a recipe matching the suggested name
+        // Get user's disliked ingredients to avoid them
+        const userIngPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id);
+        const disliked = userIngPrefs ? parseJSON(userIngPrefs.disliked_ingredients, []) : [];
+        
+        // Search for a recipe matching the suggested name (try multiple strategies)
         let newRecipe = null;
         if (newRecipeName) {
+          // Strategy 1: Exact-ish match
           newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`);
+          
+          // Strategy 2: Try each word in the name
+          if (!newRecipe) {
+            const words = newRecipeName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+            for (const word of words) {
+              newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND meal_type = ? AND id != ? LIMIT 1").get(`%${word}%`, item.meal_type, item.recipe_id);
+              if (newRecipe) break;
+            }
+          }
+        }
+        
+        // Strategy 3: Find any different recipe for this meal type, avoiding disliked ingredients
+        if (!newRecipe) {
+          const candidates = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 10").all(item.meal_type, item.recipe_id);
+          // Filter out recipes containing disliked ingredients
+          if (disliked.length > 0) {
+            newRecipe = candidates.find(c => {
+              const ings = parseJSON(c.ingredients, []);
+              return !ings.some(ing => disliked.some(d => ing.name?.toLowerCase().includes(d.toLowerCase())));
+            });
+          }
+          if (!newRecipe && candidates.length > 0) {
+            newRecipe = candidates[0]; // fallback to first random
+          }
         }
         
         if (newRecipe) {
-          // Swap to the found recipe
           db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(newRecipe.id, itemId);
+          console.log(`🔄 Swapped meal item ${itemId}: recipe ${item.recipe_id} → ${newRecipe.id} (${newRecipe.name})`);
           result = { success: true, message: `Swapped to "${newRecipe.name}"` };
         } else {
-          // Regenerate the slot with a random recipe matching the meal type
-          const mealType = item.meal_type;
-          const currentRecipeId = item.recipe_id;
-          const alt = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 1").get(mealType, currentRecipeId);
-          if (alt) {
-            db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(alt.id, itemId);
-            result = { success: true, message: `Swapped to "${alt.name}"` };
-          } else {
-            result = { success: false, message: 'No alternative recipe found for this meal type' };
-          }
+          result = { success: false, message: 'No alternative recipe found for this meal type' };
         }
         break;
       }
