@@ -35,25 +35,37 @@ router.post('/chat', async (req, res) => {
     // result = { response: string, proposedActions: [], planId: number|null }
 
     // AUTO-EXECUTE: If the AI proposed actions, execute them immediately server-side
-    // This ensures changes actually happen instead of relying on action card clicks
     const executedActions = [];
     if (result.proposedActions && result.proposedActions.length > 0) {
-      console.log(`🤖 Auto-executing ${result.proposedActions.length} proposed actions for user ${req.user.id}`);
       for (const action of result.proposedActions) {
         try {
           const execResult = await executeActionForUser(req.user.id, action);
           executedActions.push({ ...action, result: execResult });
-          console.log(`  ✅ ${action.type}: ${execResult.message}`);
         } catch (err) {
-          console.error(`  ❌ ${action.type} failed:`, err.message);
           executedActions.push({ ...action, result: { success: false, message: err.message } });
         }
       }
     }
 
-    // Append execution summary to the response text
+    // Build response text: replace AI's suggested recipe names with actual swapped names
     let responseText = result.response;
     const successActions = executedActions.filter(a => a.result?.success);
+    
+    // For swap_meal actions, if the actual recipe differs from what AI suggested,
+    // rewrite the response to show the actual recipe name
+    for (const action of executedActions) {
+      if (action.type === 'swap_meal' && action.result?.success && action.result?.actualRecipeName) {
+        const suggested = action.data?.newRecipeName;
+        if (suggested && action.result.actualRecipeName !== suggested) {
+          // Replace the AI's suggested name with the actual name in the response
+          responseText = responseText.replace(
+            new RegExp(suggested.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+            action.result.actualRecipeName
+          );
+        }
+      }
+    }
+    
     if (successActions.length > 0) {
       const summary = successActions.map(a => `✅ ${a.result.message}`).join('\n');
       responseText = responseText + '\n\n' + summary;
@@ -158,7 +170,13 @@ async function executeActionForUser(userId, action) {
 
       let newRecipe = null;
       if (newRecipeName) {
-        newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`);
+        // Strategy 1: Exact name match
+        newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) = ? AND id != ?").get(newRecipeName.toLowerCase(), item.recipe_id);
+        // Strategy 2: Partial match
+        if (!newRecipe) {
+          newRecipe = db.prepare("SELECT * FROM recipes WHERE LOWER(name) LIKE ? AND id != ? LIMIT 1").get(`%${newRecipeName.toLowerCase()}%`, item.recipe_id);
+        }
+        // Strategy 3: Word-by-word match within same meal type
         if (!newRecipe) {
           const words = newRecipeName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
           for (const word of words) {
@@ -167,6 +185,7 @@ async function executeActionForUser(userId, action) {
           }
         }
       }
+      // Strategy 4: Random recipe of same meal type, avoiding disliked ingredients
       if (!newRecipe) {
         const candidates = db.prepare("SELECT * FROM recipes WHERE meal_type = ? AND id != ? ORDER BY RANDOM() LIMIT 10").all(item.meal_type, item.recipe_id);
         if (disliked.length > 0) {
@@ -179,7 +198,7 @@ async function executeActionForUser(userId, action) {
       }
       if (newRecipe) {
         db.prepare('UPDATE meal_plan_items SET recipe_id = ? WHERE id = ?').run(newRecipe.id, itemId);
-        return { success: true, message: `Swapped to "${newRecipe.name}"` };
+        return { success: true, message: `Swapped to "${newRecipe.name}"`, actualRecipeName: newRecipe.name };
       }
       return { success: false, message: 'No alternative recipe found' };
     }
@@ -196,9 +215,28 @@ async function executeActionForUser(userId, action) {
         db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingPlan.id);
         db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingPlan.id);
       }
-      const mealGenerator = require('../services/mealGenerator');
-      const newPlan = await mealGenerator.generateMealPlan(userId, weekStart);
-      return { success: true, message: 'Meal plan regenerated for the week!' };
+      // Build preferences object that generateMealPlan expects
+      const { generateMealPlan } = require('../services/mealGenerator');
+      const dietPrefs = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(userId) || {};
+      const macrosRow = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(userId) || {};
+      const ingredientPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(userId) || {};
+      const cuisinePrefs = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(userId) || {};
+      const mealStructure = db.prepare('SELECT * FROM user_meal_structure WHERE user_id = ?').get(userId) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0 };
+      const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(userId);
+      const householdSize = profile?.household_size || 1;
+      const preferences = { diets: dietPrefs, macros: macrosRow, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
+      
+      const generatedItems = await generateMealPlan(preferences);
+      
+      // Create new plan and insert items
+      const { v4: uuidv4 } = require('uuid');
+      const planId = uuidv4();
+      db.prepare('INSERT INTO meal_plans (id, user_id, week_start_date) VALUES (?, ?, ?)').run(planId, userId, weekStart);
+      const insert = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      for (const item of generatedItems) {
+        insert.run(uuidv4(), planId, item.dayOfWeek, item.mealType, item.recipeId, item.servings || 1, item.scaleFactor || 1.0);
+      }
+      return { success: true, message: `Meal plan regenerated with ${generatedItems.length} meals! Refresh your Meal Plan page to see the changes.` };
     }
 
     default:
