@@ -405,14 +405,18 @@ async function generateMealPlan(preferences) {
   const usedCuisines = {};
   let restrictions = parseJSON(diets.restrictions, []);
   const dietPrefs = parseJSON(diets.diets, []);
-  
+
   // Safety: if restrictions came through empty but diets obj has them as a raw string, re-parse
   if (restrictions.length === 0 && typeof diets.restrictions === 'string' && diets.restrictions !== '[]') {
     try { restrictions = JSON.parse(diets.restrictions); } catch {}
   }
-  
+
+  // Load disliked ingredients to filter them out of meal plans
+  const dislikedIngredients = ingredients ? parseJSON(ingredients.disliked_ingredients, []) : [];
+
   console.log(`🔒 Dietary restrictions: ${restrictions.length > 0 ? restrictions.join(', ') : 'NONE'}`);
   console.log(`🥗 Diet preferences: ${dietPrefs.length > 0 ? dietPrefs.join(', ') : 'NONE'}`);
+  console.log(`🚫 Disliked ingredients: ${dislikedIngredients.length > 0 ? dislikedIngredients.join(', ') : 'NONE'}`);
   console.log(`📋 Raw diets object: ${JSON.stringify(diets).slice(0, 200)}`);
   
   // NUCLEAR SAFETY: If restrictions say Vegan/Vegetarian, verify by checking some known meat recipes
@@ -534,10 +538,29 @@ async function generateMealPlan(preferences) {
         console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after restriction filter (${restrictions.join(', ')})`);
       }
 
-      // Fallback: allow reuse if no unused candidates, but STILL enforce restrictions
+      // Filter out recipes containing disliked ingredients
+      if (dislikedIngredients.length > 0) {
+        const beforeCount = candidates.length;
+        candidates = candidates.filter(recipe => {
+          const recipeIngs = parseJSON(recipe.ingredients, []);
+          return !recipeIngs.some(ing => 
+            dislikedIngredients.some(d => ing.name?.toLowerCase().includes(d.toLowerCase()))
+          );
+        });
+        console.log(`    ${mealType}: ${beforeCount} candidates → ${candidates.length} after disliked ingredient filter`);
+      }
+
+      // Fallback: allow reuse if no unused candidates, but STILL enforce restrictions + dislikes
       if (candidates.length === 0) {
-        candidates = allRecipes.filter(recipe => recipePassesRestrictions(recipe, restrictions));
-        console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions`);
+        candidates = allRecipes.filter(recipe => {
+          if (!recipePassesRestrictions(recipe, restrictions)) return false;
+          if (dislikedIngredients.length > 0) {
+            const recipeIngs = parseJSON(recipe.ingredients, []);
+            if (recipeIngs.some(ing => dislikedIngredients.some(d => ing.name?.toLowerCase().includes(d.toLowerCase())))) return false;
+          }
+          return true;
+        });
+        console.log(`    ${mealType}: Fallback to all recipes → ${candidates.length} after restrictions + dislikes`);
       }
 
       // If still no candidates, use AI to generate a recipe on-the-fly (#4)
