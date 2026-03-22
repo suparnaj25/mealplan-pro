@@ -147,25 +147,21 @@ async function mealPlanChat(userId, userMessage, conversationHistory = []) {
     loved: ingredients ? parseJSON(ingredients.loved_ingredients, []) : [],
   };
 
-  // Get current AND next week meal plans for context
+  // Get ALL meal plans from current week onward (current + all future weeks)
   const now = new Date();
   const day = now.getDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + mondayOffset);
   const weekStart = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
-  
-  // Next week's Monday
-  const nextMonday = new Date(monday);
-  nextMonday.setDate(monday.getDate() + 7);
-  const nextWeekStart = `${nextMonday.getFullYear()}-${String(nextMonday.getMonth()+1).padStart(2,'0')}-${String(nextMonday.getDate()).padStart(2,'0')}`;
 
-  const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, weekStart);
-  const nextPlan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, nextWeekStart);
+  // Fetch all plans from this week onward
+  const allPlans = db.prepare('SELECT id, week_start_date FROM meal_plans WHERE user_id = ? AND week_start_date >= ? ORDER BY week_start_date').all(userId, weekStart);
   
   let mealPlanSummary = 'No meal plan generated yet.';
-  let planItems = []; // all items from both weeks for action detection
+  let planItems = []; // all items from all weeks for action detection
   const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const fmtDate = (d) => `${d.getMonth()+1}/${d.getDate()}`;
   
   // Format a week's items into summary text
   const formatWeekItems = (items) => items.map(i => {
@@ -173,41 +169,47 @@ async function mealPlanChat(userId, userMessage, conversationHistory = []) {
     return `${dayNames[i.day_of_week]} ${i.meal_type}: ${i.recipe_name} (${n.calories || '?'} cal, itemId:${i.item_id})`;
   }).join('\n');
 
-  let thisWeekSummary = '';
-  let nextWeekSummary = '';
+  const weekSummaries = [];
+  let currentWeekPlan = null;
   
-  if (plan) {
-    const thisWeekItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
-      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(plan.id);
-    planItems = [...thisWeekItems];
-    thisWeekSummary = formatWeekItems(thisWeekItems);
-  }
-  
-  if (nextPlan) {
-    const nextWeekItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
-      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(nextPlan.id);
-    // Tag next week items so detectActionsFromText can distinguish them
-    nextWeekItems.forEach(i => { i.isNextWeek = true; });
-    planItems = [...planItems, ...nextWeekItems];
-    nextWeekSummary = formatWeekItems(nextWeekItems);
-  }
-  
-  // Build combined summary
-  const sundayOfThisWeek = new Date(monday);
-  sundayOfThisWeek.setDate(monday.getDate() + 6);
-  const sundayOfNextWeek = new Date(nextMonday);
-  sundayOfNextWeek.setDate(nextMonday.getDate() + 6);
-  const fmtDate = (d) => `${d.getMonth()+1}/${d.getDate()}`;
-  
-  if (thisWeekSummary || nextWeekSummary) {
-    mealPlanSummary = '';
-    if (thisWeekSummary) {
-      mealPlanSummary += `THIS WEEK (${fmtDate(monday)} - ${fmtDate(sundayOfThisWeek)}):\n${thisWeekSummary}`;
+  for (const p of allPlans) {
+    const weekItems = db.prepare(`SELECT mpi.id as item_id, mpi.day_of_week, mpi.meal_type, mpi.scale_factor, r.id as recipe_id, r.name as recipe_name, r.nutrition
+      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?`).all(p.id);
+    
+    if (weekItems.length === 0) continue;
+    
+    // Track the first plan as current week
+    if (!currentWeekPlan && p.week_start_date === weekStart) currentWeekPlan = p;
+    
+    planItems = [...planItems, ...weekItems];
+    
+    // Calculate week label
+    const ws = new Date(p.week_start_date + 'T00:00:00');
+    const we = new Date(ws);
+    we.setDate(ws.getDate() + 6);
+    
+    let label;
+    if (p.week_start_date === weekStart) {
+      label = `THIS WEEK (${fmtDate(ws)} - ${fmtDate(we)})`;
+    } else {
+      // Calculate how many weeks ahead
+      const diffMs = ws.getTime() - monday.getTime();
+      const weeksAhead = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+      if (weeksAhead === 1) {
+        label = `NEXT WEEK (${fmtDate(ws)} - ${fmtDate(we)})`;
+      } else {
+        label = `WEEK OF ${fmtDate(ws)} - ${fmtDate(we)} (${weeksAhead} weeks ahead)`;
+      }
     }
-    if (nextWeekSummary) {
-      mealPlanSummary += `${thisWeekSummary ? '\n\n' : ''}NEXT WEEK (${fmtDate(nextMonday)} - ${fmtDate(sundayOfNextWeek)}):\n${nextWeekSummary}`;
-    }
+    
+    weekSummaries.push(`${label}:\n${formatWeekItems(weekItems)}`);
   }
+  
+  if (weekSummaries.length > 0) {
+    mealPlanSummary = weekSummaries.join('\n\n');
+  }
+  
+  const plan = currentWeekPlan || (allPlans.length > 0 ? allPlans[0] : null);
 
   // Get available recipes from DB so AI can suggest REAL recipes that exist
   const availableRecipes = {};
@@ -231,7 +233,7 @@ User's profile:
 Meal plans:
 ${mealPlanSummary}
 
-IMPORTANT: The meal plans above show BOTH this week and next week (if available). When the user says "next week", use the itemIds from the NEXT WEEK section. When they say "this week" or don't specify, use THIS WEEK's itemIds.
+IMPORTANT: The meal plans above show ALL generated weeks (this week and any future weeks). Match the user's request to the correct week and use the itemIds from that week's section. If the user says "next week", use NEXT WEEK's itemIds. If they reference a specific date or "2 weeks from now", find the matching week section.
 
 IMPORTANT: You MUST always respond with valid JSON in this exact format:
 {
