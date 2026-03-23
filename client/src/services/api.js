@@ -20,11 +20,22 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-    const data = await response.json();
+    let response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+    } catch (networkError) {
+      throw new Error('Network error — please check your internet connection and try again.');
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error(`Server error (${response.status}). Please try again.`);
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      throw new Error(data.error || `Request failed (${response.status})`);
     }
     return data;
   }

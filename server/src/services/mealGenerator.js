@@ -30,7 +30,7 @@ const RESTRICTION_EXCLUDE_RULES = {
   },
 };
 
-function parseJSON(v, d) { try { return v ? JSON.parse(v) : d; } catch { return d; } }
+const { parseJSON } = require('../utils/parseJSON');
 
 function ingredientViolatesRestriction(ingredientName, restriction) {
   const rules = RESTRICTION_EXCLUDE_RULES[restriction];

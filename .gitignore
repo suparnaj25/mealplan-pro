@@ -6,3 +6,4 @@ server/data/mealplan.db-shm
 server/.env
 .DS_Store
 *.log
+*.bat

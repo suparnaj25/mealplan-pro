@@ -7,7 +7,7 @@ const { generateMealPlan, recipePassesRestrictions } = require('../services/meal
 const router = express.Router();
 router.use(authenticateToken);
 
-const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+const { parseJSON } = require('../utils/parseJSON');
 
 router.get('/plan', (req, res) => {
   try {

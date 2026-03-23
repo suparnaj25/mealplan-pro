@@ -6,7 +6,7 @@ const { searchExternalRecipes, getAvailableAdapters } = require('../services/rec
 
 const router = express.Router();
 
-const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+const { parseJSON } = require('../utils/parseJSON');
 
 router.get('/stores/all', (req, res) => {
   try { res.json({ stores: getAllStores() }); }

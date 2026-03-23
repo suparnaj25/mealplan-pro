@@ -11,6 +11,14 @@ router.post('/signup', async (req, res) => {
     const { email, password, name } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
+    // Input validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
+    if (email.length > 255) return res.status(400).json({ error: 'Email too long (max 255 characters)' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (password.length > 128) return res.status(400).json({ error: 'Password too long (max 128 characters)' });
+    if (name && name.length > 100) return res.status(400).json({ error: 'Name too long (max 100 characters)' });
+
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
     if (existing) return res.status(409).json({ error: 'Email already registered' });
 
