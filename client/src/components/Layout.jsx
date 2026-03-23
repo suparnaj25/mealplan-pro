@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity, UtensilsCrossed } from 'lucide-react';
+import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity, UtensilsCrossed, MessageSquare } from 'lucide-react';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 
 const navItems = [
@@ -10,8 +10,9 @@ const navItems = [
   { path: '/groceries', icon: ShoppingCart, label: 'Groceries' },
   { path: '/pantry', icon: Package, label: 'Pantry' },
   { path: '/my-recipes', icon: ChefHat, label: 'Recipes' },
-  { path: '/ai-chef', icon: ChefHat, label: 'Chef' },
-  { path: '/insights', icon: Sparkles, label: 'Insights' },
+  { path: '/ai-chef', icon: Sparkles, label: 'AI Chef' },
+  { path: '/ai', icon: MessageSquare, label: 'Assistant' },
+  { path: '/insights', icon: Activity, label: 'Insights' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 
@@ -119,7 +120,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* Main content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 pb-28 md:pb-6 md:ml-24">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 pb-28 md:pb-6 md:ml-28">
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 12 }}
@@ -133,7 +134,7 @@ export default function Layout() {
       {/* Bottom navigation (mobile) — show only 5 key items */}
       <nav className="glass fixed bottom-0 left-0 right-0 z-50 md:hidden safe-area-bottom">
         <div className="flex justify-around py-2 pb-[env(safe-area-inset-bottom)]">
-          {navItems.filter(n => ['/', '/tracker', '/groceries', '/pantry', '/insights'].includes(n.path)).map(({ path, icon: Icon, label }) => {
+          {navItems.filter(n => ['/', '/tracker', '/groceries', '/ai-chef', '/insights'].includes(n.path)).map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path;
             return (
               <NavLink key={path} to={path}
@@ -151,7 +152,7 @@ export default function Layout() {
       </nav>
 
       {/* Side navigation (desktop) */}
-      <nav className="hidden md:flex fixed left-0 top-16 bottom-0 w-20 flex-col items-center py-6 gap-4 glass">
+      <nav className="hidden md:flex fixed left-0 top-16 bottom-0 w-24 flex-col items-center py-4 gap-2 glass overflow-y-auto">
         {navItems.map(({ path, icon: Icon, label }) => {
           const isActive = location.pathname === path;
           return (

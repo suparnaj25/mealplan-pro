@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import MyRecipes from './pages/MyRecipes';
 import RecipeDetail from './pages/RecipeDetail';
 import AiChef from './pages/AiChef';
+import AiAssistant from './pages/AiAssistant';
 import Insights from './pages/Insights';
 import DailyTracker from './pages/DailyTracker';
 
@@ -79,7 +80,7 @@ export default function App() {
         <Route path="tracker" element={<DailyTracker />} />
         <Route path="ai-chef" element={<AiChef />} />
         <Route path="insights" element={<Insights />} />
-        <Route path="ai" element={<AiChef />} />
+        <Route path="ai" element={<AiAssistant />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

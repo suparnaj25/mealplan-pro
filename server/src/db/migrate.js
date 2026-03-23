@@ -224,6 +224,8 @@ try {
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN scale_factor REAL DEFAULT 1.0'); } catch(e) { /* column already exists */ }
   // Add dietary compliance cache to recipes (stores JSON of restriction→boolean pairs)
   try { db.exec('ALTER TABLE recipes ADD COLUMN dietary_compliance TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Add nutrition column to user_recipes (was missing — needed for meal plan nutrition calculations)
+  try { db.exec("ALTER TABLE user_recipes ADD COLUMN nutrition TEXT DEFAULT '{}'"); } catch(e) { /* column already exists */ }
   // Family/multi-user tables
   try { db.exec(`
     CREATE TABLE IF NOT EXISTS families (

@@ -7,7 +7,7 @@ const { generateStoreLink } = require('../services/storeLinkGenerator');
 const router = express.Router();
 router.use(authenticateToken);
 
-const parseJSON = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+const { parseJSON } = require('../utils/parseJSON');
 
 function categorizeIngredient(name) {
   const n = name.toLowerCase();
