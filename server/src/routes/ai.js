@@ -270,25 +270,8 @@ router.post('/execute-action', async (req, res) => {
       }
 
       case 'regenerate_week': {
-        // Get current week start
-        const now = new Date();
-        const day = now.getDay();
-        const mondayOffset = day === 0 ? -6 : 1 - day;
-        const monday = new Date(now);
-        monday.setDate(now.getDate() + mondayOffset);
-        const weekStart = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
-        
-        // Delete existing plan and regenerate
-        const existingPlan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
-        if (existingPlan) {
-          db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingPlan.id);
-          db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingPlan.id);
-        }
-        
-        // Trigger regeneration via the meal generator
-        const mealGenerator = require('../services/mealGenerator');
-        const newPlan = await mealGenerator.generateMealPlan(req.user.id, weekStart);
-        result = { success: true, message: 'Meal plan regenerated for the week!', planId: newPlan?.id };
+        // Delegate to executeActionForUser which has the full preferences-building logic
+        result = await executeActionForUser(req.user.id, action);
         break;
       }
 

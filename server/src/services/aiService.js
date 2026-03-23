@@ -229,6 +229,7 @@ User's profile:
 - Diet preferences: ${context.diets.join(', ') || 'None'}
 - Disliked ingredients: ${context.disliked.join(', ') || 'None'}
 - Loved ingredients: ${context.loved.join(', ') || 'None'}
+- CRITICAL: NEVER suggest or recommend any recipe that contains a disliked ingredient. When swapping meals, always pick alternatives that avoid ALL disliked ingredients.
 
 Meal plans:
 ${mealPlanSummary}
