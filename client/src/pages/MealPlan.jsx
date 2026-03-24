@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -55,7 +55,9 @@ export default function MealPlan() {
     } catch (err) { console.error(err); }
   };
 
-  useEffect(() => { loadPlan(); }, [weekStart]);
+  // Refetch plan when weekStart changes OR when navigating back to this page (e.g., from AI Chef)
+  const location = useLocation();
+  useEffect(() => { loadPlan(); }, [weekStart, location.key]);
   
   // Dynamically fetch images for all recipes
   const [recipeImages, setRecipeImages] = useState({});

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity, UtensilsCrossed, MessageSquare } from 'lucide-react';
+import { CalendarDays, ShoppingCart, Package, Settings, Moon, Sun, LogOut, ChefHat, Menu, X, Sparkles, Activity, UtensilsCrossed } from 'lucide-react';
 import { useAuthStore, useThemeStore } from '../store/useStore';
 
 const navItems = [
@@ -11,7 +11,6 @@ const navItems = [
   { path: '/pantry', icon: Package, label: 'Pantry' },
   { path: '/my-recipes', icon: ChefHat, label: 'Recipes' },
   { path: '/ai-chef', icon: Sparkles, label: 'AI Chef' },
-  { path: '/ai', icon: MessageSquare, label: 'Assistant' },
   { path: '/insights', icon: Activity, label: 'Insights' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
