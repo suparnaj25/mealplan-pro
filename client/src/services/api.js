@@ -158,6 +158,9 @@ class ApiService {
   getUserRecipe(id) {
     return this.request(`/user-recipes/${id}`);
   }
+  importRecipeFromUrl(url) {
+    return this.request('/user-recipes/import-url', { method: 'POST', body: JSON.stringify({ url }) });
+  }
   createUserRecipe(data) {
     return this.request('/user-recipes', { method: 'POST', body: JSON.stringify(data) });
   }

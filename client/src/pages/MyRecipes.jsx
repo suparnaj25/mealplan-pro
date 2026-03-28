@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Mic, MicOff, Trash2, Edit3, Save, X, ChefHat,
   Clock, Users, AlertCircle, BookOpen, Square, CheckSquare,
+  Link, Loader2, Globe, ExternalLink,
 } from 'lucide-react';
 import { useUserRecipesStore } from '../store/useStore';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
@@ -360,11 +361,14 @@ function RecipeCard({ recipe, onEdit, onDelete }) {
 }
 
 export default function MyRecipes() {
-  const { recipes, loading, error, fetchRecipes, createRecipe, updateRecipe, deleteRecipe } = useUserRecipesStore();
+  const { recipes, loading, error, fetchRecipes, createRecipe, updateRecipe, deleteRecipe, importFromUrl } = useUserRecipesStore();
   const [showForm, setShowForm] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState(null);
 
   useEffect(() => {
     fetchRecipes();
@@ -402,6 +406,42 @@ export default function MyRecipes() {
       setTimeout(() => setDeleteConfirm(null), 3000);
     }
   };
+
+  const handleImportUrl = async () => {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const data = await importFromUrl(importUrl.trim());
+      const recipe = data.recipe;
+      // Pre-fill the form with the AI-parsed recipe
+      setEditingRecipe(null);
+      setShowForm(true);
+      // Build initial form data from the imported recipe
+      setImportedFormData({
+        name: recipe.name || '',
+        description: recipe.description || '',
+        cuisine: recipe.cuisine || '',
+        mealType: recipe.mealType || 'dinner',
+        ingredientsText: (recipe.ingredients || [])
+          .map((i) => typeof i === 'string' ? i : `${i.quantity || ''} ${i.unit || ''} ${i.name}`.trim())
+          .join('\n'),
+        instructionsText: (recipe.instructions || [])
+          .map((s) => typeof s === 'string' ? s : s)
+          .join('\n'),
+        prepTimeMinutes: recipe.prepTimeMinutes || '',
+        cookTimeMinutes: recipe.cookTimeMinutes || '',
+        servings: recipe.servings || 4,
+      });
+      setImportUrl('');
+    } catch (err) {
+      setImportError(err.message || 'Failed to import recipe');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const [importedFormData, setImportedFormData] = useState(null);
 
   const getInitialFormData = () => {
     if (!editingRecipe) return {};
@@ -446,6 +486,64 @@ export default function MyRecipes() {
         )}
       </div>
 
+      {/* Import from URL */}
+      {!showForm && (
+        <div className="glass-card p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 flex items-center justify-center">
+              <Globe className="text-purple-500" size={20} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm">Import from URL</h3>
+              <p className="text-xs text-gray-400">Paste a link from Instagram, TikTok, YouTube, or any recipe site</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Link size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="url"
+                value={importUrl}
+                onChange={(e) => { setImportUrl(e.target.value); setImportError(null); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleImportUrl()}
+                placeholder="https://www.instagram.com/p/... or any recipe URL"
+                className="input-field pl-10 text-sm"
+                disabled={importing}
+              />
+            </div>
+            <button
+              onClick={handleImportUrl}
+              disabled={importing || !importUrl.trim()}
+              className="btn-primary flex items-center gap-2 px-5 whitespace-nowrap"
+            >
+              {importing ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="hidden sm:inline">Importing...</span>
+                </>
+              ) : (
+                <>
+                  <ExternalLink size={16} />
+                  <span className="hidden sm:inline">Import</span>
+                </>
+              )}
+            </button>
+          </div>
+          {importing && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-purple-500">
+              <Loader2 size={14} className="animate-spin" />
+              <span>Scraping page & extracting recipe with AI... this may take a few seconds</span>
+            </div>
+          )}
+          {importError && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-red-500">
+              <AlertCircle size={14} />
+              <span>{importError}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Form */}
       <AnimatePresence>
         {showForm && (
@@ -458,19 +556,25 @@ export default function MyRecipes() {
             <div className="glass-card p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
-                  <Mic className="text-brand-500" size={20} />
+                  {importedFormData ? <Globe className="text-purple-500" size={20} /> : <Mic className="text-brand-500" size={20} />}
                 </div>
                 <div>
-                  <h3 className="font-semibold">{editingRecipe ? 'Edit Recipe' : 'New Recipe'}</h3>
+                  <h3 className="font-semibold">
+                    {editingRecipe ? 'Edit Recipe' : importedFormData ? '✨ Imported Recipe — Review & Save' : 'New Recipe'}
+                  </h3>
                   <p className="text-xs text-gray-400">
-                    Type or tap the <Mic size={10} className="inline" /> mic icon to dictate each field
+                    {importedFormData
+                      ? 'AI extracted this recipe from the URL. Review the details and save when ready.'
+                      : <>Type or tap the <Mic size={10} className="inline" /> mic icon to dictate each field</>
+                    }
                   </p>
                 </div>
               </div>
               <RecipeForm
-                initial={getInitialFormData()}
-                onSave={handleSave}
-                onCancel={() => { setShowForm(false); setEditingRecipe(null); }}
+                key={importedFormData ? 'imported' : editingRecipe?.id || 'new'}
+                initial={importedFormData || getInitialFormData()}
+                onSave={(data) => { handleSave(data); setImportedFormData(null); }}
+                onCancel={() => { setShowForm(false); setEditingRecipe(null); setImportedFormData(null); }}
                 saving={saving}
               />
             </div>

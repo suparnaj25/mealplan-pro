@@ -1236,6 +1236,85 @@ async function getActionableSwaps(weekData, targets) {
   try { return JSON.parse(result); } catch { return { swaps: [], quickFixes: [], topPriority: result }; }
 }
 
+// ── Feature: Parse Recipe from URL (scraped content) ──
+async function parseRecipeFromUrl(scrapedData) {
+  if (!isConfigured()) throw new Error('AI not configured. Set OPENAI_API_KEY in environment.');
+
+  // If we have structured JSON-LD recipe data, use it directly with minimal AI help
+  let contextText = '';
+  if (scrapedData.hasStructuredData && scrapedData.jsonLdRecipe) {
+    const jld = scrapedData.jsonLdRecipe;
+    contextText = `STRUCTURED RECIPE DATA (from JSON-LD):\n` +
+      `Name: ${jld.name}\n` +
+      `Description: ${jld.description}\n` +
+      `Cuisine: ${jld.cuisine}\n` +
+      `Category: ${jld.category}\n` +
+      `Servings: ${jld.servings}\n` +
+      `Prep Time: ${jld.prepTime}\n` +
+      `Cook Time: ${jld.cookTime}\n` +
+      `Ingredients: ${JSON.stringify(jld.ingredients)}\n` +
+      `Instructions: ${JSON.stringify(jld.instructions)}\n` +
+      `Keywords: ${jld.keywords}\n`;
+  } else {
+    // Build context from meta tags + body text
+    contextText = `URL: ${scrapedData.url}\n` +
+      `Platform: ${scrapedData.platform}\n` +
+      `Page Title: ${scrapedData.pageTitle || scrapedData.ogTitle}\n` +
+      `Description: ${scrapedData.ogDescription || scrapedData.metaDescription}\n` +
+      `Site: ${scrapedData.ogSiteName}\n` +
+      `\nPAGE CONTENT:\n${scrapedData.bodyText}`;
+  }
+
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `You are a recipe extraction expert. Given web page content (which may be from Instagram, TikTok, YouTube, a food blog, or any website), extract a complete, structured recipe.
+
+Return JSON with this exact structure:
+{
+  "name": "Recipe name",
+  "description": "Brief description of the dish",
+  "cuisine": "Cuisine type (Italian, Mexican, Indian, etc.) or empty string if unknown",
+  "mealType": "breakfast|lunch|dinner|snack",
+  "ingredients": [{"name": "ingredient name", "quantity": "amount", "unit": "unit"}],
+  "instructions": ["Step 1 text", "Step 2 text", ...],
+  "prepTimeMinutes": number or null,
+  "cookTimeMinutes": number or null,
+  "servings": number (default 4),
+  "tags": ["tag1", "tag2"]
+}
+
+Rules:
+- Always return valid JSON
+- If the content is a social media post caption (Instagram/TikTok), infer the recipe from the description. If ingredients/instructions are vague, make reasonable assumptions based on the dish name.
+- For YouTube videos, extract from the title and description
+- Parse ingredient quantities into separate name/quantity/unit fields (e.g., "2 cups flour" → {name: "flour", quantity: "2", unit: "cups"})
+- If prep/cook times are in ISO 8601 format (PT30M), convert to minutes
+- Classify mealType based on the dish (eggs/pancakes → breakfast, salad/sandwich → lunch, main courses → dinner, etc.)
+- Include relevant tags like "quick", "vegetarian", "gluten-free", cuisine type, etc.
+- If you cannot determine a recipe from the content, return {"error": "Could not extract a recipe from this URL. The page may not contain recipe content."}`
+    },
+    {
+      role: 'user',
+      content: contextText
+    }
+  ], { jsonMode: true, temperature: 0.3, maxTokens: 2000 });
+
+  try {
+    const parsed = JSON.parse(response);
+    if (parsed.error) throw new Error(parsed.error);
+    
+    // Add source URL
+    parsed.sourceUrl = scrapedData.url;
+    parsed.sourceImage = scrapedData.ogImage || scrapedData.jsonLdRecipe?.image || '';
+    
+    return parsed;
+  } catch (err) {
+    if (err.message.includes('Could not extract')) throw err;
+    throw new Error('Failed to parse AI response into a recipe. Please try a different URL.');
+  }
+}
+
 module.exports = {
   isConfigured,
   chatCompletion,
@@ -1262,4 +1341,5 @@ module.exports = {
   analyzeTrends,
   analyzeFamilyTastes,
   getActionableSwaps,
+  parseRecipeFromUrl,
 };
