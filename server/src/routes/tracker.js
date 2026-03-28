@@ -178,75 +178,102 @@ router.get('/weight-history', (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/tracker/streaks — get user streaks
+// GET /api/tracker/streaks — get user streaks and achievements
 router.get('/streaks', (req, res) => {
   try {
-    // Count consecutive days with at least one 'eaten' log
-    const logs = db.prepare("SELECT DISTINCT date FROM meal_logs WHERE user_id = ? AND status IN ('eaten', 'modified') ORDER BY date DESC").all(req.user.id);
-    
-    let currentStreak = 0;
-    let longestStreak = 0;
-    let tempStreak = 0;
+    // Helper: get today's date string in local time
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    
-    for (let i = 0; i < logs.length; i++) {
-      const logDate = logs[i].date;
-      if (i === 0) {
-        // Check if most recent log is today or yesterday
-        const diff = Math.floor((new Date(today + 'T12:00:00') - new Date(logDate + 'T12:00:00')) / (1000*60*60*24));
-        if (diff > 1) break;
-        tempStreak = 1;
-      } else {
-        const prev = new Date(logs[i-1].date + 'T12:00:00');
-        const curr = new Date(logDate + 'T12:00:00');
-        const dayDiff = Math.floor((prev - curr) / (1000*60*60*24));
-        if (dayDiff === 1) { tempStreak++; }
-        else break;
+
+    // Get all distinct logged dates (DESC order)
+    const logs = db.prepare("SELECT DISTINCT date FROM meal_logs WHERE user_id = ? AND status IN ('eaten', 'modified') ORDER BY date DESC").all(req.user.id);
+
+    // --- CURRENT STREAK ---
+    // Count consecutive days ending at today or yesterday
+    let currentStreak = 0;
+    if (logs.length > 0) {
+      const mostRecentDate = logs[0].date;
+      const diffFromToday = Math.round((new Date(today + 'T12:00:00') - new Date(mostRecentDate + 'T12:00:00')) / (1000*60*60*24));
+      // Most recent log must be today or yesterday to have an active streak
+      if (diffFromToday <= 1) {
+        currentStreak = 1;
+        for (let i = 1; i < logs.length; i++) {
+          const prev = new Date(logs[i-1].date + 'T12:00:00');
+          const curr = new Date(logs[i].date + 'T12:00:00');
+          const dayDiff = Math.round((prev - curr) / (1000*60*60*24));
+          if (dayDiff === 1) { currentStreak++; }
+          else break;
+        }
       }
     }
-    currentStreak = tempStreak;
 
-    // Calculate longest streak by scanning all logged dates
+    // --- LONGEST STREAK ---
+    // Scan all logged dates in chronological order
+    let longestStreak = 0;
     if (logs.length > 0) {
-      // logs are DESC, reverse for chronological order
       const chronological = [...logs].reverse();
       let streak = 1;
-      longestStreak = 1;
       for (let i = 1; i < chronological.length; i++) {
         const prev = new Date(chronological[i-1].date + 'T12:00:00');
         const curr = new Date(chronological[i].date + 'T12:00:00');
-        const dayDiff = Math.floor((curr - prev) / (1000*60*60*24));
-        if (dayDiff === 1) { streak++; longestStreak = Math.max(longestStreak, streak); }
+        const dayDiff = Math.round((curr - prev) / (1000*60*60*24));
+        if (dayDiff === 1) { streak++; }
         else { streak = 1; }
+        longestStreak = Math.max(longestStreak, streak);
       }
+      // Final comparison after loop (handles streak at end of list)
+      longestStreak = Math.max(longestStreak, streak);
     }
+    // Ensure longestStreak is at least currentStreak
+    longestStreak = Math.max(longestStreak, currentStreak);
 
-    // Count total logged days
+    // --- TOTAL STATS ---
     const totalDays = logs.length;
-
-    // Count total meals logged
     const totalMealsRow = db.prepare("SELECT COUNT(*) as count FROM meal_logs WHERE user_id = ? AND status IN ('eaten', 'modified')").get(req.user.id);
     const totalMeals = totalMealsRow?.count || 0;
-    
-    // Count days hitting protein target
-    const macros = db.prepare('SELECT protein_g FROM user_macros WHERE user_id = ?').get(req.user.id);
+
+    // --- PROTEIN HIT DAYS (last 7 calendar days from today, using explicit date range) ---
+    const macros = db.prepare('SELECT calories, protein_g FROM user_macros WHERE user_id = ?').get(req.user.id);
     const proteinTarget = macros?.protein_g || 150;
+    const calorieTarget = macros?.calories || 2000;
     let proteinHitDays = 0;
     if (totalDays > 0) {
-      const last7 = db.prepare("SELECT date, SUM(protein_g) as total_protein FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') AND date >= date('now', '-7 days') GROUP BY date HAVING total_protein >= ?").all(req.user.id, proteinTarget);
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      const sevenDaysAgoStr = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth()+1).padStart(2,'0')}-${String(sevenDaysAgo.getDate()).padStart(2,'0')}`;
+      const last7 = db.prepare("SELECT date, SUM(protein_g) as total_protein FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') AND date >= ? AND date <= ? GROUP BY date HAVING total_protein >= ?")
+        .all(req.user.id, sevenDaysAgoStr, today, proteinTarget);
       proteinHitDays = last7.length;
     }
 
-    // Count weeks where average daily calories were within 15% of target
-    const calorieTarget = db.prepare('SELECT calories FROM user_macros WHERE user_id = ?').get(req.user.id)?.calories || 2000;
+    // --- WEEKLY GOAL MET (weeks where avg daily calories within 15% of target) ---
+    // Use Monday-based week grouping with explicit date math instead of strftime('%W')
     let weeklyGoalMet = 0;
-    const weeklyData = db.prepare("SELECT strftime('%Y-%W', date) as week, COUNT(DISTINCT date) as days, SUM(calories) as total_cal FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') GROUP BY week HAVING days >= 3").all(req.user.id);
-    for (const w of weeklyData) {
-      const avgCal = w.total_cal / w.days;
-      if (Math.abs(avgCal - calorieTarget) / calorieTarget <= 0.15) weeklyGoalMet++;
+    if (totalDays > 0) {
+      const allLogs = db.prepare("SELECT date, SUM(calories) as day_cal FROM meal_logs WHERE user_id = ? AND status IN ('eaten','modified') GROUP BY date ORDER BY date").all(req.user.id);
+      // Group by ISO week (Monday-based)
+      const weekMap = {};
+      for (const row of allLogs) {
+        const d = new Date(row.date + 'T12:00:00');
+        const jsDay = d.getDay();
+        const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay;
+        const monday = new Date(d);
+        monday.setDate(d.getDate() + mondayOffset);
+        const weekKey = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
+        if (!weekMap[weekKey]) weekMap[weekKey] = [];
+        weekMap[weekKey].push(row.day_cal || 0);
+      }
+      for (const [, dayCals] of Object.entries(weekMap)) {
+        if (dayCals.length >= 3) { // Need at least 3 days of data for a meaningful week
+          const avgCal = dayCals.reduce((s, c) => s + c, 0) / dayCals.length;
+          if (calorieTarget > 0 && Math.abs(avgCal - calorieTarget) / calorieTarget <= 0.15) weeklyGoalMet++;
+        }
+      }
     }
 
+    // --- ACHIEVEMENTS ---
+    // Streak-based achievements use longestStreak (permanent once earned)
+    // This ensures users don't lose badges when their current streak resets
     res.json({
       currentStreak,
       longestStreak,
@@ -257,10 +284,10 @@ router.get('/streaks', (req, res) => {
       proteinHitDays,
       achievements: [
         { id: 'first_log', name: 'First Log', icon: '🎉', earned: totalDays >= 1, desc: 'Logged your first meal' },
-        { id: 'streak_3', name: '3-Day Streak', icon: '🔥', earned: currentStreak >= 3, desc: '3 consecutive days of logging' },
-        { id: 'streak_7', name: 'Week Warrior', icon: '💪', earned: currentStreak >= 7, desc: '7-day logging streak' },
-        { id: 'streak_14', name: 'Consistency King', icon: '👑', earned: currentStreak >= 14, desc: '14-day logging streak' },
-        { id: 'streak_30', name: 'Monthly Master', icon: '🏆', earned: currentStreak >= 30, desc: '30-day logging streak' },
+        { id: 'streak_3', name: '3-Day Streak', icon: '🔥', earned: longestStreak >= 3, desc: '3 consecutive days of logging' },
+        { id: 'streak_7', name: 'Week Warrior', icon: '💪', earned: longestStreak >= 7, desc: '7-day logging streak' },
+        { id: 'streak_14', name: 'Consistency King', icon: '👑', earned: longestStreak >= 14, desc: '14-day logging streak' },
+        { id: 'streak_30', name: 'Monthly Master', icon: '🏆', earned: longestStreak >= 30, desc: '30-day logging streak' },
         { id: 'protein_5', name: 'Protein Pro', icon: '💪', earned: proteinHitDays >= 5, desc: 'Hit protein target 5/7 days this week' },
         { id: 'total_10', name: 'Dedicated', icon: '⭐', earned: totalDays >= 10, desc: 'Logged meals on 10+ different days' },
         { id: 'total_30', name: 'Veteran', icon: '🎖️', earned: totalDays >= 30, desc: 'Logged meals on 30+ different days' },
