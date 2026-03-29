@@ -627,34 +627,23 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
 
     setAnalyzingPhoto(true);
     try {
-      // Convert to base64
-      const base64 = await new Promise((resolve, reject) => {
+      // Convert to data URL (same format the tracker uses)
+      const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:image/...;base64,
+        reader.onload = () => resolve(reader.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
 
-      // Call AI photo analysis endpoint
-      const result = await api.aiAnalyzePhoto(base64);
-      if (result && result.foods && result.foods.length > 0) {
-        // Use the first identified food
-        const food = result.foods[0];
+      // Call the same photo analysis endpoint that works in the tracker
+      const result = await api.analyzePhoto(dataUrl);
+      if (result && result.food) {
         addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
-          name: food.name || 'Identified meal',
-          calories: food.calories || 0,
-          protein: food.protein || 0,
-          carbs: food.carbs || 0,
-          fat: food.fat || 0,
-        });
-      } else if (result && result.name) {
-        // Alternative response format
-        addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
-          name: result.name,
-          calories: result.calories || result.nutrition?.calories || 0,
-          protein: result.protein || result.nutrition?.protein || 0,
-          carbs: result.carbs || result.nutrition?.carbs || 0,
-          fat: result.fat || result.nutrition?.fat || 0,
+          name: result.food.name || 'Identified meal',
+          calories: result.food.calories || 0,
+          protein: result.food.protein || 0,
+          carbs: result.food.carbs || 0,
+          fat: result.food.fat || 0,
         });
       } else {
         alert('Could not identify the food in the photo. Please try again or search manually.');
@@ -968,6 +957,59 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
             </div>
           </>
         )}
+      {/* Replicate Meal Modal — copy a prefilled meal to other days */}
+      {replicateModal && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setReplicateModal(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 max-w-xs w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-bold text-sm flex items-center gap-2"><Repeat2 size={16} className="text-blue-500" /> Repeat Meal</h4>
+              <button onClick={() => setReplicateModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 mb-1 truncate">"{replicateModal.food.customName}"</p>
+            <p className="text-[10px] text-gray-400 mb-3">Select days to copy this {replicateModal.mealType} to:</p>
+            <div className="grid grid-cols-7 gap-1.5 mb-4">
+              {DAYS.map((day, idx) => {
+                const isSrc = idx === replicateModal.sourceDayOfWeek;
+                const isSel = replicateModal.selectedDays.includes(idx);
+                return (
+                  <button key={idx} disabled={isSrc}
+                    onClick={() => setReplicateModal(prev => ({
+                      ...prev,
+                      selectedDays: isSel ? prev.selectedDays.filter(d => d !== idx) : [...prev.selectedDays, idx]
+                    }))}
+                    className={`py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                      isSrc ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed' :
+                      isSel ? 'bg-blue-500 text-white shadow' :
+                      'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200'
+                    }`}>{day}</button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setReplicateModal(prev => ({ ...prev, selectedDays: DAYS.map((_, i) => i).filter(i => i !== replicateModal.sourceDayOfWeek) }))}
+                className="btn-secondary text-[10px] flex-1">All Days</button>
+              <button disabled={replicateModal.selectedDays.length === 0}
+                onClick={() => {
+                  for (const dayIdx of replicateModal.selectedDays) {
+                    addPrefilled(dayIdx, replicateModal.mealType, {
+                      name: replicateModal.food.customName,
+                      calories: replicateModal.food.customNutrition?.calories || 0,
+                      protein: replicateModal.food.customNutrition?.protein || 0,
+                      carbs: replicateModal.food.customNutrition?.carbs || 0,
+                      fat: replicateModal.food.customNutrition?.fat || 0,
+                      recipeId: replicateModal.food.recipeId || null,
+                    });
+                  }
+                  setReplicateModal(null);
+                }}
+                className="btn-primary text-[10px] flex-1 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 disabled:opacity-50">
+                <CopyPlus size={12} /> Copy to {replicateModal.selectedDays.length} day{replicateModal.selectedDays.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </motion.div>
     </motion.div>
   );
