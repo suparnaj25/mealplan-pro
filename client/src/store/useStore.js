@@ -103,6 +103,11 @@ export const useUserRecipesStore = create((set) => ({
     }
   },
 
+  importFromUrl: async (url) => {
+    const data = await api.importRecipeFromUrl(url);
+    return data; // Returns { recipe, scraped } for user review before saving
+  },
+
   updateRecipe: async (id, recipeData) => {
     set({ error: null });
     try {

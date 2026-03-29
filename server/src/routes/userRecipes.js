@@ -3,6 +3,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/connection');
 const { authenticateToken } = require('../middleware/auth');
 const { estimateNutritionFromIngredients } = require('../services/nutritionEstimator');
+const { scrapeUrl } = require('../services/urlScraper');
+const ai = require('../services/aiService');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -223,6 +225,34 @@ router.put('/:id', (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST import recipe from URL (Instagram, TikTok, blog, etc.)
+router.post('/import-url', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    if (!ai.isConfigured()) {
+      return res.status(503).json({ error: 'AI is not configured. Set OPENAI_API_KEY to use URL import.' });
+    }
+
+    // Step 1: Scrape the URL
+    console.log(`🔗 Scraping URL: ${url}`);
+    const scraped = await scrapeUrl(url);
+    console.log(`📄 Scraped: platform=${scraped.platform}, hasStructuredData=${scraped.hasStructuredData}, title="${scraped.ogTitle || scraped.pageTitle}"`);
+
+    // Step 2: AI parses scraped content into a recipe
+    const recipe = await ai.parseRecipeFromUrl(scraped);
+    console.log(`🍳 AI parsed recipe: "${recipe.name}"`);
+
+    // Return parsed recipe for user review (NOT saved yet)
+    res.json({ recipe, scraped: { platform: scraped.platform, ogImage: scraped.ogImage, hasStructuredData: scraped.hasStructuredData } });
+  } catch (error) {
+    console.error('URL import error:', error);
+    res.status(error.message.includes('Invalid URL') || error.message.includes('Failed to fetch') ? 400 : 500)
+      .json({ error: error.message || 'Failed to import recipe from URL' });
   }
 });
 
