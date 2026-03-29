@@ -248,7 +248,17 @@ router.post('/import-url', async (req, res) => {
     console.log(`🍳 AI parsed recipe: "${recipe.name}"`);
 
     // Return parsed recipe for user review (NOT saved yet)
-    res.json({ recipe, scraped: { platform: scraped.platform, ogImage: scraped.ogImage, hasStructuredData: scraped.hasStructuredData } });
+    res.json({
+      recipe,
+      scraped: {
+        platform: scraped.platform,
+        ogImage: scraped.ogImage || scraped.thumbnailUrl,
+        hasStructuredData: scraped.hasStructuredData,
+        isVideo: scraped.isVideo,
+        extractionMethod: recipe.extractionMethod || 'text',
+        authorName: scraped.authorName,
+      }
+    });
   } catch (error) {
     console.error('URL import error:', error);
     res.status(error.message.includes('Invalid URL') || error.message.includes('Failed to fetch') ? 400 : 500)

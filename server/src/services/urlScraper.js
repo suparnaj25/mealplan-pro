@@ -5,10 +5,9 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 /**
  * Scrape a URL and extract recipe-relevant content.
  * Works with Instagram, TikTok, YouTube, food blogs, and any web page.
- * Returns structured scraped data for AI parsing.
+ * For video platforms, uses oEmbed APIs + thumbnail vision analysis.
  */
 async function scrapeUrl(url) {
-  // Validate URL
   let parsedUrl;
   try {
     parsedUrl = new URL(url);
@@ -16,11 +15,24 @@ async function scrapeUrl(url) {
     throw new Error('Invalid URL format');
   }
 
-  // Fetch the page
+  const hostname = parsedUrl.hostname.toLowerCase();
+  let platform = 'web';
+  if (hostname.includes('instagram.com')) platform = 'instagram';
+  else if (hostname.includes('tiktok.com')) platform = 'tiktok';
+  else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) platform = 'youtube';
+  else if (hostname.includes('pinterest.com')) platform = 'pinterest';
+
+  // For video platforms, try oEmbed first for richer data
+  let oEmbedData = null;
+  if (['instagram', 'tiktok', 'youtube'].includes(platform)) {
+    oEmbedData = await fetchOEmbed(url, platform);
+  }
+
+  // Fetch the page HTML
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
-  let html;
+  let html = '';
   try {
     const response = await fetch(url, {
       headers: {
@@ -31,76 +43,131 @@ async function scrapeUrl(url) {
       signal: controller.signal,
       redirect: 'follow',
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch URL: HTTP ${response.status}`);
+    if (response.ok) {
+      html = await response.text();
     }
-
-    html = await response.text();
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Request timed out (15s). The URL may be unreachable.');
-    throw new Error(`Failed to fetch URL: ${err.message}`);
+    // If HTML fetch fails but we have oEmbed data, continue
+    if (!oEmbedData) {
+      if (err.name === 'AbortError') throw new Error('Request timed out (15s). The URL may be unreachable.');
+      throw new Error(`Failed to fetch URL: ${err.message}`);
+    }
   } finally {
     clearTimeout(timeout);
   }
 
-  const $ = cheerio.load(html);
+  const $ = html ? cheerio.load(html) : null;
 
   // --- Extract structured recipe data (JSON-LD) ---
-  // Many food blogs embed Schema.org Recipe markup
   let jsonLdRecipe = null;
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const data = JSON.parse($(el).html());
-      const recipes = findRecipeInJsonLd(data);
-      if (recipes) jsonLdRecipe = recipes;
-    } catch { /* ignore malformed JSON-LD */ }
-  });
+  if ($) {
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const data = JSON.parse($(el).html());
+        const recipes = findRecipeInJsonLd(data);
+        if (recipes) jsonLdRecipe = recipes;
+      } catch { /* ignore */ }
+    });
+  }
 
   // --- Extract Open Graph / meta tags ---
-  const ogTitle = $('meta[property="og:title"]').attr('content') || '';
-  const ogDescription = $('meta[property="og:description"]').attr('content') || '';
-  const ogImage = $('meta[property="og:image"]').attr('content') || '';
-  const ogSiteName = $('meta[property="og:site_name"]').attr('content') || '';
-  const metaDescription = $('meta[name="description"]').attr('content') || '';
-  const pageTitle = $('title').text().trim() || '';
+  const ogTitle = $?.('meta[property="og:title"]').attr('content') || '';
+  const ogDescription = $?.('meta[property="og:description"]').attr('content') || '';
+  const ogImage = $?.('meta[property="og:image"]').attr('content') || '';
+  const ogSiteName = $?.('meta[property="og:site_name"]').attr('content') || '';
+  const ogVideo = $?.('meta[property="og:video"]').attr('content') || $?.('meta[property="og:video:url"]').attr('content') || '';
+  const metaDescription = $?.('meta[name="description"]').attr('content') || '';
+  const pageTitle = $?.('title').text().trim() || '';
 
-  // --- Extract main body text (cleaned) ---
-  // Remove scripts, styles, nav, footer, ads
-  $('script, style, nav, footer, header, aside, .ad, .ads, .sidebar, .comments, .related').remove();
-  
-  // Try to find the main content area
+  // --- Extract body text ---
   let bodyText = '';
-  const mainContent = $('article, [role="main"], main, .recipe, .post-content, .entry-content, .content').first();
-  if (mainContent.length) {
-    bodyText = mainContent.text().replace(/\s+/g, ' ').trim();
-  } else {
-    bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+  if ($) {
+    $('script, style, nav, footer, header, aside, .ad, .ads, .sidebar, .comments, .related').remove();
+    const mainContent = $('article, [role="main"], main, .recipe, .post-content, .entry-content, .content').first();
+    bodyText = (mainContent.length ? mainContent.text() : $('body').text()).replace(/\s+/g, ' ').trim().slice(0, 4000);
   }
-  // Limit body text to avoid token overflow
-  bodyText = bodyText.slice(0, 4000);
 
-  // --- Detect platform ---
-  const hostname = parsedUrl.hostname.toLowerCase();
-  let platform = 'web';
-  if (hostname.includes('instagram.com')) platform = 'instagram';
-  else if (hostname.includes('tiktok.com')) platform = 'tiktok';
-  else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) platform = 'youtube';
-  else if (hostname.includes('pinterest.com')) platform = 'pinterest';
+  // --- Determine if this is a video page ---
+  const isVideo = !!ogVideo || ['instagram', 'tiktok', 'youtube'].includes(platform);
+
+  // --- Build the best available caption/description ---
+  // For video platforms, oEmbed often has the full caption that HTML scraping misses
+  let caption = '';
+  if (oEmbedData) {
+    caption = oEmbedData.title || '';
+    // Instagram oEmbed returns the caption in the HTML field or title
+    if (oEmbedData.html) {
+      // Extract text from oEmbed HTML snippet
+      const oEmbedHtml = cheerio.load(oEmbedData.html);
+      const oEmbedText = oEmbedHtml('body').text().replace(/\s+/g, ' ').trim();
+      if (oEmbedText.length > caption.length) caption = oEmbedText;
+    }
+  }
+
+  // Combine all text sources for the best possible content
+  const allText = [
+    caption,
+    ogTitle,
+    ogDescription,
+    metaDescription,
+    bodyText,
+  ].filter(Boolean).join('\n\n');
+
+  // Get the best thumbnail URL for vision analysis
+  const thumbnailUrl = oEmbedData?.thumbnail_url || ogImage || '';
 
   return {
     url,
     platform,
-    pageTitle,
+    isVideo,
+    pageTitle: pageTitle || oEmbedData?.title || ogTitle,
     ogTitle,
     ogDescription,
     ogImage,
-    ogSiteName,
+    ogSiteName: ogSiteName || oEmbedData?.provider_name || '',
     metaDescription,
-    bodyText,
+    bodyText: allText.slice(0, 5000),
     jsonLdRecipe,
     hasStructuredData: !!jsonLdRecipe,
+    // Video-specific fields
+    caption,
+    thumbnailUrl,
+    oEmbed: oEmbedData,
+    authorName: oEmbedData?.author_name || '',
   };
+}
+
+/**
+ * Fetch oEmbed data from platform APIs.
+ * These are public APIs that return post metadata including captions.
+ */
+async function fetchOEmbed(url, platform) {
+  const oEmbedUrls = {
+    instagram: `https://api.instagram.com/oembed?url=${encodeURIComponent(url)}&omitscript=true`,
+    youtube: `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+    tiktok: `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+  };
+
+  const oEmbedUrl = oEmbedUrls[platform];
+  if (!oEmbedUrl) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(oEmbedUrl, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    console.log(`📡 oEmbed (${platform}): title="${(data.title || '').slice(0, 80)}", thumbnail=${!!data.thumbnail_url}`);
+    return data;
+  } catch (err) {
+    console.log(`⚠️ oEmbed failed for ${platform}: ${err.message}`);
+    return null;
+  }
 }
 
 /**
@@ -108,7 +175,6 @@ async function scrapeUrl(url) {
  */
 function findRecipeInJsonLd(data) {
   if (!data) return null;
-  
   if (Array.isArray(data)) {
     for (const item of data) {
       const found = findRecipeInJsonLd(item);
@@ -116,9 +182,7 @@ function findRecipeInJsonLd(data) {
     }
     return null;
   }
-
   if (typeof data === 'object') {
-    // Direct Recipe type
     if (data['@type'] === 'Recipe' || (Array.isArray(data['@type']) && data['@type'].includes('Recipe'))) {
       return {
         name: data.name || '',
@@ -136,19 +200,11 @@ function findRecipeInJsonLd(data) {
         nutrition: data.nutrition || null,
       };
     }
-
-    // Check @graph array
-    if (data['@graph']) {
-      return findRecipeInJsonLd(data['@graph']);
-    }
+    if (data['@graph']) return findRecipeInJsonLd(data['@graph']);
   }
-
   return null;
 }
 
-/**
- * Extract instructions from various JSON-LD formats
- */
 function extractInstructions(instructions) {
   if (!instructions) return [];
   if (typeof instructions === 'string') return [instructions];
@@ -166,9 +222,6 @@ function extractInstructions(instructions) {
   return [];
 }
 
-/**
- * Parse ISO 8601 duration (PT30M, PT1H30M) to minutes
- */
 function parseDuration(iso) {
   if (!iso || typeof iso !== 'string') return null;
   const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
