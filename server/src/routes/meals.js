@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/connection');
 const { authenticateToken } = require('../middleware/auth');
-const { generateMealPlan, recipePassesRestrictions } = require('../services/mealGenerator');
+const { generateMealPlan, generateJointPlan, recipePassesRestrictions } = require('../services/mealGenerator');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -17,19 +17,24 @@ router.get('/plan', (req, res) => {
     const plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
     if (!plan) return res.json({ plan: null, items: [] });
 
+    // Fetch items — LEFT JOIN so custom meals (no recipe_id) still appear
     const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
-      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(plan.id);
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(plan.id);
 
     res.json({ plan, items: items.map(i => {
+      const isCustom = !!i.custom_name && !i.recipe_id;
       const sf = i.scale_factor || 1.0;
-      const nutrition = parseJSON(i.nutrition, {});
-      const ingredients = parseJSON(i.ingredients, []);
+      // For custom user-provided meals, use custom_nutrition; for recipes, use recipe nutrition
+      const nutrition = isCustom ? parseJSON(i.custom_nutrition, {}) : parseJSON(i.nutrition, {});
+      const ingredients = isCustom ? [] : parseJSON(i.ingredients, []);
       return {
         ...i,
+        recipe_name: isCustom ? i.custom_name : (i.recipe_name || i.custom_name || 'Unknown'),
         nutrition: { calories: Math.round((nutrition.calories || 0) * sf), protein: Math.round((nutrition.protein || 0) * sf), carbs: Math.round((nutrition.carbs || 0) * sf), fat: Math.round((nutrition.fat || 0) * sf), fiber: Math.round((nutrition.fiber || 0) * sf) },
         ingredients: ingredients.map(ing => ({ ...ing, quantity: Math.round(((ing.quantity || 1) / (i.recipe_servings || 4)) * (i.servings || 1) * sf * 10) / 10 })),
         instructions: parseJSON(i.instructions, []),
         locked: !!i.locked,
+        is_user_provided: !!i.is_user_provided,
         scale_factor: sf,
       };
     }) });
@@ -202,6 +207,87 @@ router.post('/regenerate-slot', (req, res) => {
       locked: !!updated.locked,
       scale_factor: sf,
     } });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/meals/generate-joint — Joint Plan: user provides some meals, AI fills the rest
+router.post('/generate-joint', async (req, res) => {
+  try {
+    const { weekStart, prefilled } = req.body;
+    if (!weekStart) return res.status(400).json({ error: 'weekStart required' });
+    if (!prefilled || !Array.isArray(prefilled) || prefilled.length === 0) {
+      return res.status(400).json({ error: 'At least one prefilled meal is required for joint plan' });
+    }
+
+    const dietPrefs = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id) || {};
+    const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id) || {};
+    const ingredientPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id) || {};
+    const cuisinePrefs = db.prepare('SELECT * FROM user_cuisine_preferences WHERE user_id = ?').get(req.user.id) || {};
+    const mealStructure = db.prepare('SELECT * FROM user_meal_structure WHERE user_id = ?').get(req.user.id) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0 };
+
+    const profile = db.prepare('SELECT household_size FROM users WHERE id = ?').get(req.user.id);
+    const householdSize = profile?.household_size || 1;
+
+    const preferences = { userId: req.user.id, diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
+
+    // Generate AI meals for empty slots, considering prefilled nutrition
+    const generatedItems = await generateJointPlan(preferences, prefilled);
+
+    // Delete existing plan for this week
+    const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
+    if (existing) {
+      db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existing.id);
+      db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
+    }
+
+    const planId = uuidv4();
+    db.prepare("INSERT INTO meal_plans (id, user_id, week_start_date, plan_mode) VALUES (?, ?, ?, 'joint')").run(planId, req.user.id, weekStart);
+
+    // Insert prefilled (user-provided) meals first
+    const insertFull = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor, is_user_provided, locked, custom_name, custom_nutrition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const pf of prefilled) {
+      insertFull.run(
+        uuidv4(), planId, pf.dayOfWeek, pf.mealType,
+        pf.recipeId || null, pf.servings || 1, 1.0,
+        1, 1, // is_user_provided=1, locked=1
+        pf.customName || null,
+        pf.customNutrition ? JSON.stringify(pf.customNutrition) : null
+      );
+    }
+
+    // Insert AI-generated meals
+    const insertGen = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor, is_user_provided) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
+    for (const item of generatedItems) {
+      insertGen.run(uuidv4(), planId, item.dayOfWeek, item.mealType, item.recipeId, item.servings || 1, item.scaleFactor || 1.0);
+    }
+
+    // Fetch the complete plan
+    const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(planId);
+    const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(planId);
+
+    const responseItems = items.map(i => {
+      const isCustom = !!i.custom_name && !i.recipe_id;
+      const sf = i.scale_factor || 1.0;
+      const nutrition = isCustom ? parseJSON(i.custom_nutrition, {}) : parseJSON(i.nutrition, {});
+      return {
+        ...i,
+        recipe_name: isCustom ? i.custom_name : (i.recipe_name || i.custom_name || 'Unknown'),
+        nutrition: {
+          calories: Math.round((nutrition.calories || 0) * sf),
+          protein: Math.round((nutrition.protein || 0) * sf),
+          carbs: Math.round((nutrition.carbs || 0) * sf),
+          fat: Math.round((nutrition.fat || 0) * sf),
+          fiber: Math.round((nutrition.fiber || 0) * sf),
+        },
+        ingredients: isCustom ? [] : parseJSON(i.ingredients, []),
+        instructions: parseJSON(i.instructions, []),
+        locked: !!i.locked,
+        is_user_provided: !!i.is_user_provided,
+        scale_factor: sf,
+      };
+    });
+    res.json({ plan, items: responseItems });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 

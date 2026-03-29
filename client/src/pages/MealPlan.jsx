@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2, Camera } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -348,6 +348,16 @@ export default function MealPlan() {
                         <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1.5">
                           <MealIcon type={item.meal_type} size={12} className="text-white/90" /> {item.meal_type}
                         </span>
+                        {/* User vs AI badge */}
+                        {item.is_user_provided ? (
+                          <span className="absolute top-2 right-2 bg-blue-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <User size={9} /> Your meal
+                          </span>
+                        ) : plan?.plan_mode === 'joint' ? (
+                          <span className="absolute top-2 right-2 bg-brand-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Sparkles size={9} /> AI pick
+                          </span>
+                        ) : null}
                       </div>
                       <div className="p-3">
                       <div className="flex items-center justify-between mb-1">
@@ -442,39 +452,31 @@ export default function MealPlan() {
           </div>
         </div>
       )}
-      {/* Generate Plan Modal */}
+      {/* Generate Plan Modal — Multi-step: Mode → Meal Types → (Joint: Pre-fill) */}
       <AnimatePresence>
         {showGenModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowGenModal(false)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><UtensilsCrossed size={20} className="text-brand-500" /> What meals should we plan?</h3>
-              <p className="text-xs text-gray-500 mb-4">Select which meals to include. You can change this each week.</p>
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                {[
-                  { key: 'breakfast', label: 'Breakfast', Icon: Sunrise },
-                  { key: 'lunch', label: 'Lunch', Icon: Sun },
-                  { key: 'dinner', label: 'Dinner', Icon: Moon },
-                  { key: 'snacks', label: 'Snacks', Icon: Cookie },
-                ].map(({ key, label, Icon }) => (
-                  <button key={key} onClick={() => setGenMealTypes(prev => ({ ...prev, [key]: !prev[key] }))}
-                    className={`py-4 rounded-xl text-sm font-medium transition-all flex flex-col items-center gap-2 ${
-                      genMealTypes[key] ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                    }`}>
-                    <Icon size={24} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowGenModal(false)} className="btn-secondary flex-1 text-sm">Cancel</button>
-                <button onClick={handleGenerate} disabled={!Object.values(genMealTypes).some(Boolean)} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm">
-                  <Sparkles size={16} /> Generate Plan
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <GeneratePlanModal
+            genMealTypes={genMealTypes}
+            setGenMealTypes={setGenMealTypes}
+            onClose={() => setShowGenModal(false)}
+            onGenerateFull={handleGenerate}
+            onGenerateJoint={async (prefilled) => {
+              setShowGenModal(false);
+              setGenerating(true);
+              setGenError(null);
+              try {
+                await api.updateProfile({ mealStructure: genMealTypes });
+                const data = await api.generateJointPlan(weekStart, prefilled);
+                setPlan(data.plan);
+                setItems(data.items || []);
+              } catch (err) {
+                console.error(err);
+                setGenError(err.message || 'Failed to generate joint plan.');
+              } finally {
+                setGenerating(false);
+              }
+            }}
+          />
         )}
       </AnimatePresence>
 
@@ -598,5 +600,367 @@ export default function MealPlan() {
         ) : null}
       </AiResultSheet>
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   GeneratePlanModal — Multi-step: Plan Mode → Meal Types → (Joint: Pre-fill Grid)
+   ───────────────────────────────────────────────────────────── */
+function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateFull, onGenerateJoint }) {
+  const [step, setStep] = useState(1); // 1=mode, 2=meal types, 3=prefill grid
+  const [planMode, setPlanMode] = useState('full'); // 'full' or 'joint'
+  const [prefilled, setPrefilled] = useState([]); // [{ dayOfWeek, mealType, customName, customNutrition, recipeId? }]
+  const [activeSlot, setActiveSlot] = useState(null); // { dayOfWeek, mealType } — which slot is being filled
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const photoInputRef = useRef(null);
+
+  // Handle photo capture/upload → AI analyze → add as prefilled meal
+  const handlePhotoCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeSlot) return;
+    // Reset file input so same file can be re-selected
+    if (photoInputRef.current) photoInputRef.current.value = '';
+
+    setAnalyzingPhoto(true);
+    try {
+      // Convert to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:image/...;base64,
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Call AI photo analysis endpoint
+      const result = await api.aiAnalyzePhoto(base64);
+      if (result && result.foods && result.foods.length > 0) {
+        // Use the first identified food
+        const food = result.foods[0];
+        addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
+          name: food.name || 'Identified meal',
+          calories: food.calories || 0,
+          protein: food.protein || 0,
+          carbs: food.carbs || 0,
+          fat: food.fat || 0,
+        });
+      } else if (result && result.name) {
+        // Alternative response format
+        addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
+          name: result.name,
+          calories: result.calories || result.nutrition?.calories || 0,
+          protein: result.protein || result.nutrition?.protein || 0,
+          carbs: result.carbs || result.nutrition?.carbs || 0,
+          fat: result.fat || result.nutrition?.fat || 0,
+        });
+      } else {
+        alert('Could not identify the food in the photo. Please try again or search manually.');
+      }
+    } catch (err) {
+      console.error('Photo analysis failed:', err);
+      alert('Failed to analyze photo. Please try searching manually.');
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
+
+  const MEAL_TYPES = [
+    { key: 'breakfast', label: 'Breakfast', Icon: Sunrise },
+    { key: 'lunch', label: 'Lunch', Icon: Sun },
+    { key: 'dinner', label: 'Dinner', Icon: Moon },
+    { key: 'snacks', label: 'Snacks', Icon: Cookie },
+  ];
+
+  const activeMealTypes = MEAL_TYPES.filter(mt => genMealTypes[mt.key]);
+
+  // Food search with debounce
+  useEffect(() => {
+    if (!searchQuery || searchQuery.length < 2) { setSearchResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data = await api.searchFood(searchQuery);
+        setSearchResults(data.foods || []);
+      } catch { setSearchResults([]); }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const addPrefilled = (dayOfWeek, mealType, food) => {
+    // Remove existing entry for this slot if any
+    setPrefilled(prev => [
+      ...prev.filter(p => !(p.dayOfWeek === dayOfWeek && p.mealType === mealType)),
+      {
+        dayOfWeek,
+        mealType,
+        customName: food.name,
+        customNutrition: { calories: food.calories || 0, protein: food.protein || 0, carbs: food.carbs || 0, fat: food.fat || 0 },
+        recipeId: food.recipeId || null,
+      }
+    ]);
+    setActiveSlot(null);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const removePrefilled = (dayOfWeek, mealType) => {
+    setPrefilled(prev => prev.filter(p => !(p.dayOfWeek === dayOfWeek && p.mealType === mealType)));
+  };
+
+  const getPrefilledForSlot = (dayOfWeek, mealType) => {
+    return prefilled.find(p => p.dayOfWeek === dayOfWeek && p.mealType === mealType);
+  };
+
+  // Calculate daily totals for the prefill view
+  const getDayTotals = (dayIdx) => {
+    const dayMeals = prefilled.filter(p => p.dayOfWeek === dayIdx);
+    return {
+      calories: dayMeals.reduce((s, m) => s + (m.customNutrition?.calories || 0), 0),
+      protein: dayMeals.reduce((s, m) => s + (m.customNutrition?.protein || 0), 0),
+    };
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className={`bg-white dark:bg-gray-900 rounded-2xl shadow-2xl ${step === 3 ? 'max-w-2xl w-full max-h-[85vh] overflow-y-auto' : 'max-w-sm w-full'} p-6`}
+        onClick={(e) => e.stopPropagation()}>
+
+        {/* Step 1: Choose Plan Mode */}
+        {step === 1 && (
+          <>
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+              <CalendarDays size={20} className="text-brand-500" /> How would you like to plan?
+            </h3>
+            <p className="text-xs text-gray-500 mb-5">Choose your planning style for this week.</p>
+            <div className="space-y-3 mb-6">
+              <button onClick={() => { setPlanMode('full'); setStep(2); }}
+                className={`w-full p-4 rounded-xl border-2 text-left transition-all hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 ${planMode === 'full' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-brand-500 text-white flex items-center justify-center">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Full Plan</p>
+                    <p className="text-xs text-gray-500">AI plans all your meals for the week</p>
+                  </div>
+                </div>
+              </button>
+              <button onClick={() => { setPlanMode('joint'); setStep(2); }}
+                className={`w-full p-4 rounded-xl border-2 text-left transition-all hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 ${planMode === 'joint' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Joint Plan</p>
+                    <p className="text-xs text-gray-500">Add your own meals, AI fills the rest to hit your goals</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            <button onClick={onClose} className="btn-secondary w-full text-sm">Cancel</button>
+          </>
+        )}
+
+        {/* Step 2: Select Meal Types */}
+        {step === 2 && (
+          <>
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+              <UtensilsCrossed size={20} className="text-brand-500" /> What meals to include?
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">Select which meals to plan each day.</p>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {MEAL_TYPES.map(({ key, label, Icon }) => (
+                <button key={key} onClick={() => setGenMealTypes(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className={`py-4 rounded-xl text-sm font-medium transition-all flex flex-col items-center gap-2 ${
+                    genMealTypes[key] ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                  }`}>
+                  <Icon size={24} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setStep(1)} className="btn-secondary flex-1 text-sm">Back</button>
+              {planMode === 'full' ? (
+                <button onClick={onGenerateFull} disabled={!Object.values(genMealTypes).some(Boolean)}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm">
+                  <Sparkles size={16} /> Generate Plan
+                </button>
+              ) : (
+                <button onClick={() => setStep(3)} disabled={!Object.values(genMealTypes).some(Boolean)}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm bg-blue-500 hover:bg-blue-600">
+                  <User size={16} /> Add Your Meals →
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Step 3: Joint Plan — Pre-fill Grid */}
+        {step === 3 && (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <User size={20} className="text-blue-500" /> Add Your Meals
+              </h3>
+              <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Tap any slot to add a meal you've already planned. Empty slots will be filled by AI to hit your daily macro targets.
+            </p>
+
+            {/* Weekly grid */}
+            <div className="space-y-3 mb-4">
+              {DAYS.map((day, dayIdx) => {
+                const totals = getDayTotals(dayIdx);
+                const hasMeals = prefilled.some(p => p.dayOfWeek === dayIdx);
+                return (
+                  <div key={dayIdx} className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-brand-500">{day}</span>
+                      {hasMeals && (
+                        <span className="text-[10px] text-gray-400">
+                          {totals.calories} cal · {totals.protein}g P locked
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${activeMealTypes.length}, 1fr)` }}>
+                      {activeMealTypes.map(({ key, label, Icon }) => {
+                        const mealKey = key === 'snacks' ? 'snack' : key;
+                        const filled = getPrefilledForSlot(dayIdx, mealKey);
+                        const isActive = activeSlot?.dayOfWeek === dayIdx && activeSlot?.mealType === mealKey;
+
+                        if (filled) {
+                          return (
+                            <div key={key} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2 relative group">
+                              <div className="flex items-center gap-1 mb-1">
+                                <Icon size={10} className="text-blue-500" />
+                                <span className="text-[9px] text-blue-500 font-semibold uppercase">{label}</span>
+                              </div>
+                              <p className="text-[11px] font-medium leading-tight truncate" title={filled.customName}>{filled.customName}</p>
+                              <p className="text-[9px] text-gray-400 mt-0.5">{filled.customNutrition?.calories} cal · {filled.customNutrition?.protein}g P</p>
+                              <button onClick={() => removePrefilled(dayIdx, mealKey)}
+                                className="absolute top-1 right-1 p-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <X size={10} />
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <button key={key} onClick={() => { setActiveSlot({ dayOfWeek: dayIdx, mealType: mealKey }); setSearchQuery(''); setSearchResults([]); }}
+                            className={`border-2 border-dashed rounded-lg p-2 text-center transition-all ${
+                              isActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-400'
+                            }`}>
+                            <Icon size={14} className="mx-auto text-gray-300 mb-1" />
+                            <p className="text-[9px] text-gray-400">{label}</p>
+                            <p className="text-[8px] text-gray-300 mt-0.5">AI fills</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Inline food search for active slot */}
+                    {activeSlot?.dayOfWeek === dayIdx && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="mt-2 overflow-hidden">
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={`Search or 📷 snap a photo...`}
+                            className="w-full pl-9 pr-12 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            autoFocus
+                          />
+                          {/* Camera button inside the input */}
+                          <button
+                            type="button"
+                            onClick={() => photoInputRef.current?.click()}
+                            disabled={analyzingPhoto}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-500 transition-all"
+                            title="Take or upload a photo of your meal"
+                          >
+                            {analyzingPhoto ? (
+                              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Camera size={14} />
+                            )}
+                          </button>
+                          {/* Hidden file input for photo capture */}
+                          <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handlePhotoCapture}
+                            className="hidden"
+                          />
+                          {searching && <div className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
+                        </div>
+                        {/* Photo analyzing indicator */}
+                        {analyzingPhoto && (
+                          <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs text-blue-600 dark:text-blue-400">Analyzing your photo with AI...</span>
+                          </div>
+                        )}
+                        {searchResults.length > 0 && (
+                          <div className="mt-1 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-800">
+                            {searchResults.map((food, i) => (
+                              <button key={i} onClick={() => addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, food)}
+                                className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                <p className="text-xs font-medium truncate">{food.name}</p>
+                                <p className="text-[10px] text-gray-400">
+                                  {food.calories} cal · {food.protein}g P · {food.carbs}g C · {food.fat}g F
+                                  {food.source === 'ai' && ' · ✨ AI'}
+                                  {food.source === 'nutritionix' && ' · ✅ Verified'}
+                                  {food.brand && food.source !== 'ai' && food.source !== 'nutritionix' && ` · ${food.brand}`}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
+                          <p className="text-xs text-gray-400 mt-2 text-center">No results found. Try a different search.</p>
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Summary + Generate */}
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 mb-4">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500">
+                  <span className="font-semibold text-blue-500">{prefilled.length}</span> meal{prefilled.length !== 1 ? 's' : ''} you've added
+                </span>
+                <span className="text-gray-500">
+                  <span className="font-semibold text-brand-500">{DAYS.length * activeMealTypes.length - prefilled.length}</span> slots for AI
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep(2)} className="btn-secondary flex-1 text-sm">Back</button>
+              <button onClick={() => onGenerateJoint(prefilled)} disabled={prefilled.length === 0}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm bg-blue-500 hover:bg-blue-600 disabled:opacity-50">
+                <Sparkles size={16} /> Generate Joint Plan
+              </button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }

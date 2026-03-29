@@ -90,6 +90,9 @@ class ApiService {
   generateMealPlan(weekStart) {
     return this.request('/meals/generate', { method: 'POST', body: JSON.stringify({ weekStart }) });
   }
+  generateJointPlan(weekStart, prefilled) {
+    return this.request('/meals/generate-joint', { method: 'POST', body: JSON.stringify({ weekStart, prefilled }) });
+  }
   updateMealPlanItem(planId, itemId, data) {
     return this.request(`/meals/plan/${planId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
   }
