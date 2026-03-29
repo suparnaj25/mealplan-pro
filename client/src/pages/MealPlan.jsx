@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2, Camera } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2, Camera, Coffee, GlassWater } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { getRecipeImage, fetchRecipeImage } from '../utils/foodImages';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MealIcon = ({ type, size = 14, className = '' }) => {
-  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie };
+  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie, beverage: Coffee };
   const Icon = icons[type] || UtensilsCrossed;
   return <Icon size={size} className={className} />;
 };
@@ -32,7 +32,7 @@ export default function MealPlan() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [showGenModal, setShowGenModal] = useState(false);
-  const [genMealTypes, setGenMealTypes] = useState({ breakfast: true, lunch: true, dinner: true, snacks: false });
+  const [genMealTypes, setGenMealTypes] = useState({ breakfast: true, lunch: true, dinner: true, snacks: false, beverages: false });
   const [aiSheet, setAiSheet] = useState({ open: false, type: null, data: null, loading: false });
   const [feedbackMap, setFeedbackMap] = useState({}); // { recipeId: 'loved'|'liked'|'ok'|'disliked' }
   const navigate = useNavigate();
@@ -89,7 +89,7 @@ export default function MealPlan() {
   useEffect(() => {
     api.getPreferences().then(data => {
       const ms = data.mealStructure || {};
-      setGenMealTypes({ breakfast: !!ms.breakfast, lunch: !!ms.lunch, dinner: !!ms.dinner, snacks: !!ms.snacks });
+      setGenMealTypes({ breakfast: !!ms.breakfast, lunch: !!ms.lunch, dinner: !!ms.dinner, snacks: !!ms.snacks, beverages: !!ms.beverages });
     }).catch(() => {});
   }, []);
 
@@ -672,6 +672,7 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
     { key: 'lunch', label: 'Lunch', Icon: Sun },
     { key: 'dinner', label: 'Dinner', Icon: Moon },
     { key: 'snacks', label: 'Snacks', Icon: Cookie },
+    { key: 'beverages', label: 'Beverages', Icon: Coffee },
   ];
 
   const activeMealTypes = MEAL_TYPES.filter(mt => genMealTypes[mt.key]);
@@ -835,7 +836,7 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
                     </div>
                     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${activeMealTypes.length}, 1fr)` }}>
                       {activeMealTypes.map(({ key, label, Icon }) => {
-                        const mealKey = key === 'snacks' ? 'snack' : key;
+                        const mealKey = key === 'snacks' ? 'snack' : key === 'beverages' ? 'beverage' : key;
                         const filled = getPrefilledForSlot(dayIdx, mealKey);
                         const isActive = activeSlot?.dayOfWeek === dayIdx && activeSlot?.mealType === mealKey;
 
@@ -908,7 +909,6 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
                             ref={photoInputRef}
                             type="file"
                             accept="image/*"
-                            capture="environment"
                             onChange={handlePhotoCapture}
                             className="hidden"
                           />
@@ -969,96 +969,6 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
           </>
         )}
       </motion.div>
-
-      {/* Replicate Meal Modal — copy a prefilled meal to other days */}
-      <AnimatePresence>
-        {replicateModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-            onClick={() => setReplicateModal(null)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl p-5 max-w-xs w-full shadow-2xl"
-              onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-bold text-sm flex items-center gap-2">
-                  <Repeat2 size={16} className="text-blue-500" /> Repeat Meal
-                </h4>
-                <button onClick={() => setReplicateModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                  <X size={16} />
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mb-1 truncate">"{replicateModal.food.customName}"</p>
-              <p className="text-[10px] text-gray-400 mb-3">
-                {replicateModal.food.customNutrition?.calories} cal · {replicateModal.food.customNutrition?.protein}g P
-              </p>
-              <p className="text-xs text-gray-500 mb-2">Copy this {replicateModal.mealType} to other days:</p>
-              <div className="grid grid-cols-7 gap-1.5 mb-4">
-                {DAYS.map((day, idx) => {
-                  const isSource = idx === replicateModal.sourceDayOfWeek;
-                  const isSelected = replicateModal.selectedDays.includes(idx);
-                  const alreadyFilled = !isSource && getPrefilledForSlot(idx, replicateModal.mealType);
-                  return (
-                    <button
-                      key={idx}
-                      disabled={isSource}
-                      onClick={() => {
-                        setReplicateModal(prev => ({
-                          ...prev,
-                          selectedDays: isSelected
-                            ? prev.selectedDays.filter(d => d !== idx)
-                            : [...prev.selectedDays, idx]
-                        }));
-                      }}
-                      className={`py-2 rounded-lg text-[10px] font-semibold transition-all relative ${
-                        isSource ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-400 cursor-not-allowed' :
-                        isSelected ? 'bg-blue-500 text-white shadow-md' :
-                        'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                      title={isSource ? 'Source day' : alreadyFilled ? `Will replace: ${alreadyFilled.customName}` : `Add to ${day}`}
-                    >
-                      {day}
-                      {alreadyFilled && !isSelected && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full" title="Has existing meal" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setReplicateModal(prev => ({
-                    ...prev,
-                    selectedDays: DAYS.map((_, i) => i).filter(i => i !== replicateModal.sourceDayOfWeek)
-                  }))}
-                  className="btn-secondary text-[10px] flex-1 py-2"
-                >
-                  All Days
-                </button>
-                <button
-                  onClick={() => {
-                    // Copy the meal to all selected days for the same meal type
-                    for (const dayIdx of replicateModal.selectedDays) {
-                      addPrefilled(dayIdx, replicateModal.mealType, {
-                        name: replicateModal.food.customName,
-                        calories: replicateModal.food.customNutrition?.calories || 0,
-                        protein: replicateModal.food.customNutrition?.protein || 0,
-                        carbs: replicateModal.food.customNutrition?.carbs || 0,
-                        fat: replicateModal.food.customNutrition?.fat || 0,
-                        recipeId: replicateModal.food.recipeId || null,
-                      });
-                    }
-                    setReplicateModal(null);
-                  }}
-                  disabled={replicateModal.selectedDays.length === 0}
-                  className="btn-primary text-[10px] flex-1 py-2 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
-                >
-                  <CopyPlus size={12} /> Copy to {replicateModal.selectedDays.length} day{replicateModal.selectedDays.length !== 1 ? 's' : ''}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
