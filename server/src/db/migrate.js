@@ -263,6 +263,11 @@ try {
       UNIQUE(user_id, recipe_id)
     );
   `); } catch(e) { /* table already exists */ }
+  // Joint Plan feature: plan_mode on meal_plans, user-provided meal tracking on items
+  try { db.exec("ALTER TABLE meal_plans ADD COLUMN plan_mode TEXT DEFAULT 'full'"); } catch(e) { /* column already exists */ }
+  try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN is_user_provided INTEGER DEFAULT 0'); } catch(e) { /* column already exists */ }
+  try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN custom_name TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  try { db.exec("ALTER TABLE meal_plan_items ADD COLUMN custom_nutrition TEXT DEFAULT NULL"); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

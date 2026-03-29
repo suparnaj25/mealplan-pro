@@ -844,4 +844,234 @@ Example: [true, false, true, true]`
   return result;
 }
 
-module.exports = { generateMealPlan, recipePassesRestrictions };
+/**
+ * Generate a Joint Plan — user provides some meals, AI fills the remaining slots
+ * to meet daily/weekly macro targets. Also adds snack suggestions when there's a gap.
+ *
+ * @param {Object} preferences - Same as generateMealPlan
+ * @param {Array} prefilledItems - User's pre-filled meals: [{ dayOfWeek, mealType, recipeId?, customName?, customNutrition? }]
+ * @returns {Array} AI-generated items for empty slots only (prefilled items are saved separately by the route)
+ */
+async function generateJointPlan(preferences, prefilledItems) {
+  const { diets, macros, ingredients, cuisines, mealStructure, householdSize = 1 } = preferences;
+
+  // Build the set of active meal types
+  const mealTypes = [];
+  if (mealStructure.breakfast) mealTypes.push('breakfast');
+  if (mealStructure.lunch) mealTypes.push('lunch');
+  if (mealStructure.dinner) mealTypes.push('dinner');
+  if (mealStructure.snacks) mealTypes.push('snack');
+
+  const dailyTargets = {
+    calories: macros?.calories || 2000,
+    protein: macros?.protein_g || 150,
+    carbs: macros?.carbs_g || 200,
+    fat: macros?.fat_g || 67,
+  };
+
+  console.log(`🤝 Joint Plan: ${prefilledItems.length} user meals, generating AI meals for empty slots`);
+  console.log(`📊 Daily targets: ${dailyTargets.calories} cal, ${dailyTargets.protein}g P, ${dailyTargets.carbs}g C, ${dailyTargets.fat}g F`);
+
+  // Index prefilled meals by day+mealType for quick lookup
+  const prefilledMap = {}; // { "0-breakfast": { nutrition }, "2-dinner": { nutrition }, ... }
+  for (const pf of prefilledItems) {
+    const key = `${pf.dayOfWeek}-${pf.mealType}`;
+    // Get nutrition: either from customNutrition, or look up the recipe
+    let nutrition = pf.customNutrition || {};
+    if (pf.recipeId && (!nutrition.calories || nutrition.calories === 0)) {
+      const recipe = db.prepare('SELECT nutrition FROM recipes WHERE id = ?').get(pf.recipeId);
+      if (recipe) nutrition = parseJSON(recipe.nutrition, {});
+    }
+    prefilledMap[key] = { ...pf, nutrition };
+    console.log(`  👤 Day ${pf.dayOfWeek} ${pf.mealType}: ${pf.customName || pf.recipeId || '?'} — ${nutrition.calories || 0} cal, ${nutrition.protein || 0}g P`);
+  }
+
+  // Calculate per-day remaining budgets
+  const dayBudgets = {};
+  const dayEmptySlots = {};
+  for (let day = 0; day < 7; day++) {
+    const usedNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    const emptySlots = [];
+
+    for (const mt of mealTypes) {
+      const key = `${day}-${mt}`;
+      if (prefilledMap[key]) {
+        const n = prefilledMap[key].nutrition;
+        usedNutrition.calories += n.calories || 0;
+        usedNutrition.protein += n.protein || 0;
+        usedNutrition.carbs += n.carbs || 0;
+        usedNutrition.fat += n.fat || 0;
+      } else {
+        emptySlots.push(mt);
+      }
+    }
+
+    dayBudgets[day] = {
+      calories: Math.max(0, dailyTargets.calories - usedNutrition.calories),
+      protein: Math.max(0, dailyTargets.protein - usedNutrition.protein),
+      carbs: Math.max(0, dailyTargets.carbs - usedNutrition.carbs),
+      fat: Math.max(0, dailyTargets.fat - usedNutrition.fat),
+    };
+    dayEmptySlots[day] = emptySlots;
+
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    console.log(`  ${days[day]}: ${emptySlots.length} empty slots (${emptySlots.join(', ') || 'none'}), remaining budget: ${dayBudgets[day].calories} cal, ${dayBudgets[day].protein}g P`);
+  }
+
+  // Now generate meals for empty slots using the existing algorithm but with adjusted targets
+  let restrictions = parseJSON(diets.restrictions, []);
+  if (restrictions.length === 0 && typeof diets.restrictions === 'string' && diets.restrictions !== '[]') {
+    try { restrictions = JSON.parse(diets.restrictions); } catch {}
+  }
+  const dislikedIngredients = ingredients ? parseJSON(ingredients.disliked_ingredients, []) : [];
+  const dietPrefs = parseJSON(diets.diets, []);
+
+  // Pre-fetch recipes
+  const allMealTypes = [...new Set(Object.values(dayEmptySlots).flat())];
+  for (const mt of allMealTypes) {
+    try { await fetchAndCacheFromInternet(mt, restrictions); } catch (e) { /* non-fatal */ }
+  }
+
+  // Load recipe cache (reuse the same compliance logic as generateMealPlan)
+  const recipeCache = {};
+  for (const mt of allMealTypes) {
+    let recipes = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name, dietary_compliance FROM recipes WHERE meal_type = ?').all(mt);
+    if (restrictions.length > 0) {
+      recipes = recipes.filter(r => recipePassesRestrictions(r, restrictions));
+    }
+    if (dislikedIngredients.length > 0) {
+      recipes = recipes.filter(recipe => {
+        const recipeIngs = parseJSON(recipe.ingredients, []);
+        const recipeName = (recipe.name || '').toLowerCase();
+        return !dislikedIngredients.some(d => {
+          const dl = d.toLowerCase();
+          return recipeName.includes(dl) || recipeIngs.some(ing => ing.name?.toLowerCase().includes(dl));
+        });
+      });
+    }
+    recipeCache[mt] = recipes;
+  }
+
+  const items = [];
+  const usedRecipeIds = new Set();
+  const usedCuisines = {};
+
+  // Exclude recently used recipes (2-week no-repeat)
+  if (preferences.userId) {
+    try {
+      const recentPlans = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? ORDER BY week_start_date DESC LIMIT 2').all(preferences.userId);
+      for (const rp of recentPlans) {
+        const recentItems = db.prepare('SELECT recipe_id FROM meal_plan_items WHERE meal_plan_id = ?').all(rp.id);
+        for (const ri of recentItems) if (ri.recipe_id) usedRecipeIds.add(ri.recipe_id);
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  for (let day = 0; day < 7; day++) {
+    const emptySlots = dayEmptySlots[day];
+    if (emptySlots.length === 0) continue;
+
+    const budget = dayBudgets[day];
+    const runningUsed = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+    for (let slotIdx = 0; slotIdx < emptySlots.length; slotIdx++) {
+      const mealType = emptySlots[slotIdx];
+      const isLastSlot = slotIdx === emptySlots.length - 1;
+
+      // Calculate target for this slot
+      let slotTarget;
+      if (isLastSlot) {
+        // Last empty slot: fill the remaining gap
+        slotTarget = {
+          calories: Math.max(100, budget.calories - runningUsed.calories),
+          protein: Math.max(5, budget.protein - runningUsed.protein),
+          carbs: Math.max(5, budget.carbs - runningUsed.carbs),
+          fat: Math.max(2, budget.fat - runningUsed.fat),
+        };
+      } else {
+        // Distribute remaining budget evenly across remaining empty slots
+        const slotsLeft = emptySlots.length - slotIdx;
+        slotTarget = {
+          calories: (budget.calories - runningUsed.calories) / slotsLeft,
+          protein: (budget.protein - runningUsed.protein) / slotsLeft,
+          carbs: (budget.carbs - runningUsed.carbs) / slotsLeft,
+          fat: (budget.fat - runningUsed.fat) / slotsLeft,
+        };
+      }
+
+      const allRecipes = recipeCache[mealType] || [];
+      let candidates = allRecipes.filter(r => !usedRecipeIds.has(r.id));
+      if (candidates.length === 0) candidates = allRecipes;
+      if (candidates.length === 0) continue;
+
+      // Score candidates against the slot target
+      const scored = candidates.map(recipe => {
+        const nutrition = parseJSON(recipe.nutrition, {});
+        const nutritionScore = scoreRecipeNutrition(nutrition, slotTarget);
+        const varietyPenalty = scoreVariety(recipe, usedCuisines, usedRecipeIds);
+        const tags = parseJSON(recipe.diet_tags, []).map(t => t.toLowerCase());
+        let dietBonus = 0;
+        if (dietPrefs.length > 0 && dietPrefs.some(d => tags.includes(d.toLowerCase()))) dietBonus = -0.15;
+        return { recipe, totalScore: nutritionScore + varietyPenalty + dietBonus, nutrition };
+      }).sort((a, b) => a.totalScore - b.totalScore);
+
+      // Pick from top 3
+      const topN = Math.min(3, scored.length);
+      const weights = [0.6, 0.25, 0.15];
+      let roll = Math.random();
+      let pickIdx = 0;
+      for (let i = 0; i < topN; i++) { roll -= weights[i]; if (roll <= 0) { pickIdx = i; break; } }
+
+      const pick = scored[pickIdx];
+      if (pick) {
+        usedRecipeIds.add(pick.recipe.id);
+        const cuisine = pick.recipe.cuisine || 'Unknown';
+        usedCuisines[cuisine] = (usedCuisines[cuisine] || 0) + 1;
+
+        runningUsed.calories += pick.nutrition.calories || 0;
+        runningUsed.protein += pick.nutrition.protein || 0;
+        runningUsed.carbs += pick.nutrition.carbs || 0;
+        runningUsed.fat += pick.nutrition.fat || 0;
+
+        items.push({ dayOfWeek: day, mealType, recipeId: pick.recipe.id, servings: householdSize, scaleFactor: 1.0 });
+      }
+    }
+
+    // Snack injection: if after filling all empty slots, the day is still >15% below calorie target
+    // or >20% below protein target, add a snack suggestion
+    const totalUsedCal = (dailyTargets.calories - budget.calories) + runningUsed.calories;
+    const totalUsedProt = (dailyTargets.protein - budget.protein) + runningUsed.protein;
+    const calGapPct = (dailyTargets.calories - totalUsedCal) / dailyTargets.calories;
+    const protGapPct = (dailyTargets.protein - totalUsedProt) / dailyTargets.protein;
+
+    if ((calGapPct > 0.15 || protGapPct > 0.20) && !emptySlots.includes('snack')) {
+      const snackTarget = {
+        calories: Math.max(50, dailyTargets.calories - totalUsedCal),
+        protein: Math.max(3, dailyTargets.protein - totalUsedProt),
+        carbs: Math.max(3, dailyTargets.carbs - ((dailyTargets.carbs - budget.carbs) + runningUsed.carbs)),
+        fat: Math.max(1, dailyTargets.fat - ((dailyTargets.fat - budget.fat) + runningUsed.fat)),
+      };
+
+      const snackRecipes = (recipeCache['snack'] || []).filter(r => !usedRecipeIds.has(r.id));
+      if (snackRecipes.length > 0) {
+        const snackScored = snackRecipes.map(recipe => {
+          const nutrition = parseJSON(recipe.nutrition, {});
+          return { recipe, score: scoreRecipeNutrition(nutrition, snackTarget), nutrition };
+        }).sort((a, b) => a.score - b.score);
+
+        const snackPick = snackScored[0];
+        if (snackPick) {
+          usedRecipeIds.add(snackPick.recipe.id);
+          items.push({ dayOfWeek: day, mealType: 'snack', recipeId: snackPick.recipe.id, servings: householdSize, scaleFactor: 1.0 });
+          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          console.log(`  🍎 ${days[day]}: Added snack suggestion to fill ${Math.round(calGapPct * 100)}% calorie gap / ${Math.round(protGapPct * 100)}% protein gap`);
+        }
+      }
+    }
+  }
+
+  console.log(`✅ Joint Plan: generated ${items.length} AI meals for empty slots`);
+  return items;
+}
+
+module.exports = { generateMealPlan, generateJointPlan, recipePassesRestrictions };
