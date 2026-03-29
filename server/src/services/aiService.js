@@ -1237,38 +1237,12 @@ async function getActionableSwaps(weekData, targets) {
 }
 
 // ── Feature: Parse Recipe from URL (scraped content) ──
+// Supports text-based blogs AND video platforms (Instagram, TikTok, YouTube)
+// For videos: uses GPT-4o Vision to analyze the thumbnail + caption text
 async function parseRecipeFromUrl(scrapedData) {
   if (!isConfigured()) throw new Error('AI not configured. Set OPENAI_API_KEY in environment.');
 
-  // If we have structured JSON-LD recipe data, use it directly with minimal AI help
-  let contextText = '';
-  if (scrapedData.hasStructuredData && scrapedData.jsonLdRecipe) {
-    const jld = scrapedData.jsonLdRecipe;
-    contextText = `STRUCTURED RECIPE DATA (from JSON-LD):\n` +
-      `Name: ${jld.name}\n` +
-      `Description: ${jld.description}\n` +
-      `Cuisine: ${jld.cuisine}\n` +
-      `Category: ${jld.category}\n` +
-      `Servings: ${jld.servings}\n` +
-      `Prep Time: ${jld.prepTime}\n` +
-      `Cook Time: ${jld.cookTime}\n` +
-      `Ingredients: ${JSON.stringify(jld.ingredients)}\n` +
-      `Instructions: ${JSON.stringify(jld.instructions)}\n` +
-      `Keywords: ${jld.keywords}\n`;
-  } else {
-    // Build context from meta tags + body text
-    contextText = `URL: ${scrapedData.url}\n` +
-      `Platform: ${scrapedData.platform}\n` +
-      `Page Title: ${scrapedData.pageTitle || scrapedData.ogTitle}\n` +
-      `Description: ${scrapedData.ogDescription || scrapedData.metaDescription}\n` +
-      `Site: ${scrapedData.ogSiteName}\n` +
-      `\nPAGE CONTENT:\n${scrapedData.bodyText}`;
-  }
-
-  const response = await chatCompletion([
-    {
-      role: 'system',
-      content: `You are a recipe extraction expert. Given web page content (which may be from Instagram, TikTok, YouTube, a food blog, or any website), extract a complete, structured recipe.
+  const systemPrompt = `You are a recipe extraction expert. Extract a complete, structured recipe from the provided content.
 
 Return JSON with this exact structure:
 {
@@ -1286,28 +1260,124 @@ Return JSON with this exact structure:
 
 Rules:
 - Always return valid JSON
-- If the content is a social media post caption (Instagram/TikTok), infer the recipe from the description. If ingredients/instructions are vague, make reasonable assumptions based on the dish name.
-- For YouTube videos, extract from the title and description
-- Parse ingredient quantities into separate name/quantity/unit fields (e.g., "2 cups flour" → {name: "flour", quantity: "2", unit: "cups"})
+- If the content is from a social media video (Instagram Reel, TikTok, YouTube), use the caption text AND the food visible in the thumbnail image to identify the dish and reconstruct a complete recipe.
+- Even if the caption is minimal (e.g., just a dish name or hashtags), use your culinary knowledge to create a full, authentic recipe for that dish.
+- For video content with a thumbnail showing food: identify the dish from the image, then provide a complete recipe with realistic ingredients and step-by-step instructions.
+- Parse ingredient quantities into separate name/quantity/unit fields
 - If prep/cook times are in ISO 8601 format (PT30M), convert to minutes
-- Classify mealType based on the dish (eggs/pancakes → breakfast, salad/sandwich → lunch, main courses → dinner, etc.)
+- Classify mealType based on the dish
 - Include relevant tags like "quick", "vegetarian", "gluten-free", cuisine type, etc.
-- If you cannot determine a recipe from the content, return {"error": "Could not extract a recipe from this URL. The page may not contain recipe content."}`
-    },
-    {
-      role: 'user',
-      content: contextText
+- If you truly cannot determine any food or recipe from the content, return {"error": "Could not extract a recipe from this URL."}`;
+
+  // Decide whether to use Vision (for video thumbnails) or text-only
+  const useVision = scrapedData.isVideo && scrapedData.thumbnailUrl;
+
+  if (useVision) {
+    // ── VIDEO PATH: Use GPT-4o Vision to analyze thumbnail + caption ──
+    console.log(`👁️ Using Vision to analyze video thumbnail: ${scrapedData.thumbnailUrl.slice(0, 80)}...`);
+
+    let contextParts = [];
+    if (scrapedData.caption) contextParts.push(`Caption/Description: ${scrapedData.caption}`);
+    if (scrapedData.authorName) contextParts.push(`Author: ${scrapedData.authorName}`);
+    if (scrapedData.pageTitle && scrapedData.pageTitle !== scrapedData.caption) contextParts.push(`Title: ${scrapedData.pageTitle}`);
+    if (scrapedData.ogDescription && scrapedData.ogDescription !== scrapedData.caption) contextParts.push(`Description: ${scrapedData.ogDescription}`);
+    contextParts.push(`Platform: ${scrapedData.platform}`);
+    contextParts.push(`URL: ${scrapedData.url}`);
+
+    // Add any body text that might contain recipe details (e.g., YouTube description)
+    if (scrapedData.bodyText && scrapedData.bodyText.length > 100) {
+      contextParts.push(`\nPage content:\n${scrapedData.bodyText.slice(0, 3000)}`);
     }
+
+    const userContent = [
+      {
+        type: 'text',
+        text: `This is a recipe video from ${scrapedData.platform}. Look at the food in the thumbnail image and read the caption/description below to identify the dish and create a complete recipe.\n\n${contextParts.join('\n')}`
+      },
+      {
+        type: 'image_url',
+        image_url: { url: scrapedData.thumbnailUrl, detail: 'high' }
+      }
+    ];
+
+    const res = await fetch(`${OPENAI_BASE_URL()}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY()}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_VISION_MODEL || 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`Vision API failed (${res.status}), falling back to text-only: ${err.slice(0, 200)}`);
+      // Fall through to text-only path below
+    } else {
+      const data = await res.json();
+      const response = data.choices[0].message.content;
+      try {
+        const parsed = JSON.parse(response);
+        if (parsed.error) throw new Error(parsed.error);
+        parsed.sourceUrl = scrapedData.url;
+        parsed.sourceImage = scrapedData.thumbnailUrl || scrapedData.ogImage || '';
+        parsed.extractionMethod = 'vision';
+        console.log(`🍳 Vision parsed recipe: "${parsed.name}"`);
+        return parsed;
+      } catch (err) {
+        if (err.message.includes('Could not extract')) throw err;
+        // Fall through to text-only
+        console.error('Vision JSON parse failed, falling back to text-only');
+      }
+    }
+  }
+
+  // ── TEXT PATH: Standard text-based extraction ──
+  let contextText = '';
+  if (scrapedData.hasStructuredData && scrapedData.jsonLdRecipe) {
+    const jld = scrapedData.jsonLdRecipe;
+    contextText = `STRUCTURED RECIPE DATA (from JSON-LD):\n` +
+      `Name: ${jld.name}\n` +
+      `Description: ${jld.description}\n` +
+      `Cuisine: ${jld.cuisine}\n` +
+      `Category: ${jld.category}\n` +
+      `Servings: ${jld.servings}\n` +
+      `Prep Time: ${jld.prepTime}\n` +
+      `Cook Time: ${jld.cookTime}\n` +
+      `Ingredients: ${JSON.stringify(jld.ingredients)}\n` +
+      `Instructions: ${JSON.stringify(jld.instructions)}\n` +
+      `Keywords: ${jld.keywords}\n`;
+  } else {
+    contextText = `URL: ${scrapedData.url}\n` +
+      `Platform: ${scrapedData.platform}\n` +
+      `Page Title: ${scrapedData.pageTitle || scrapedData.ogTitle}\n` +
+      `Description: ${scrapedData.ogDescription || scrapedData.metaDescription}\n` +
+      `Site: ${scrapedData.ogSiteName}\n` +
+      (scrapedData.caption ? `Caption: ${scrapedData.caption}\n` : '') +
+      (scrapedData.authorName ? `Author: ${scrapedData.authorName}\n` : '') +
+      `\nPAGE CONTENT:\n${scrapedData.bodyText}`;
+  }
+
+  const response = await chatCompletion([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: contextText }
   ], { jsonMode: true, temperature: 0.3, maxTokens: 2000 });
 
   try {
     const parsed = JSON.parse(response);
     if (parsed.error) throw new Error(parsed.error);
-    
-    // Add source URL
     parsed.sourceUrl = scrapedData.url;
     parsed.sourceImage = scrapedData.ogImage || scrapedData.jsonLdRecipe?.image || '';
-    
+    parsed.extractionMethod = 'text';
     return parsed;
   } catch (err) {
     if (err.message.includes('Could not extract')) throw err;

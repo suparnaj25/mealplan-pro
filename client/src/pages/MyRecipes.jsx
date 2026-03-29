@@ -530,9 +530,14 @@ export default function MyRecipes() {
             </button>
           </div>
           {importing && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-purple-500">
-              <Loader2 size={14} className="animate-spin" />
-              <span>Scraping page & extracting recipe with AI... this may take a few seconds</span>
+            <div className="mt-3 space-y-1">
+              <div className="flex items-center gap-2 text-xs text-purple-500">
+                <Loader2 size={14} className="animate-spin" />
+                <span>Analyzing page content with AI... this may take 5-15 seconds</span>
+              </div>
+              <p className="text-[11px] text-gray-400 pl-6">
+                Works with recipe blogs, Instagram reels, TikTok videos, YouTube — AI reads captions & analyzes food thumbnails
+              </p>
             </div>
           )}
           {importError && (
