@@ -1,6 +1,19 @@
 const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Reusable browser instance (lazy-initialized)
+let _browser = null;
+async function getBrowser() {
+  if (!_browser || !_browser.isConnected()) {
+    _browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    });
+  }
+  return _browser;
+}
 
 /**
  * Scrape a URL and extract recipe-relevant content.
@@ -24,36 +37,39 @@ async function scrapeUrl(url) {
 
   // For video platforms, try oEmbed first for richer data
   let oEmbedData = null;
-  if (['instagram', 'tiktok', 'youtube'].includes(platform)) {
+  if (['tiktok', 'youtube'].includes(platform)) {
     oEmbedData = await fetchOEmbed(url, platform);
   }
 
-  // Fetch the page HTML
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
+  // For Instagram, use the embed endpoint which actually returns content
   let html = '';
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: controller.signal,
-      redirect: 'follow',
-    });
-    if (response.ok) {
-      html = await response.text();
+  if (platform === 'instagram') {
+    html = await fetchInstagramEmbed(url);
+  } else {
+    // Fetch the page HTML normally
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (response.ok) {
+        html = await response.text();
+      }
+    } catch (err) {
+      if (!oEmbedData) {
+        if (err.name === 'AbortError') throw new Error('Request timed out (15s). The URL may be unreachable.');
+        throw new Error(`Failed to fetch URL: ${err.message}`);
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-  } catch (err) {
-    // If HTML fetch fails but we have oEmbed data, continue
-    if (!oEmbedData) {
-      if (err.name === 'AbortError') throw new Error('Request timed out (15s). The URL may be unreachable.');
-      throw new Error(`Failed to fetch URL: ${err.message}`);
-    }
-  } finally {
-    clearTimeout(timeout);
   }
 
   const $ = html ? cheerio.load(html) : null;
@@ -135,6 +151,95 @@ async function scrapeUrl(url) {
     oEmbed: oEmbedData,
     authorName: oEmbedData?.author_name || '',
   };
+}
+
+/**
+ * Fetch Instagram content using Puppeteer (headless Chrome).
+ * Instagram requires JavaScript rendering — no server-side scraping works without a real browser.
+ * Uses the /embed/ endpoint which is lighter than the full page.
+ */
+async function fetchInstagramEmbed(url) {
+  let page = null;
+  try {
+    const shortcodeMatch = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+    if (!shortcodeMatch) {
+      console.log('⚠️ Could not extract Instagram shortcode from URL');
+      return '';
+    }
+    const shortcode = shortcodeMatch[2];
+    const embedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned/`;
+
+    console.log(`📸 Launching Puppeteer for Instagram embed: ${embedUrl}`);
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setUserAgent(USER_AGENT);
+    // Block unnecessary resources to speed up loading
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (['video', 'media', 'font'].includes(type)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    await page.goto(embedUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+
+    // Wait for content to render
+    await page.waitForSelector('img', { timeout: 8000 }).catch(() => {});
+
+    // Extract data from the rendered page
+    const data = await page.evaluate(() => {
+      // Get all content images (not profile pics, not static)
+      const images = [];
+      document.querySelectorAll('img').forEach(img => {
+        const src = img.src || '';
+        if (src.includes('cdninstagram.com') && !src.includes('/s150x150/') && img.width > 100) {
+          images.push(src);
+        }
+      });
+
+      // Get caption text
+      const captionEl = document.querySelector('.Caption, .CaptionContent, [class*="Caption"]');
+      const caption = captionEl ? captionEl.innerText.trim() : '';
+
+      // Get username
+      const usernameEl = document.querySelector('.UsernameText, [class*="Username"]');
+      const username = usernameEl ? usernameEl.innerText.trim() : '';
+
+      // Get all visible text
+      const bodyText = document.body.innerText.replace(/\s+/g, ' ').trim();
+
+      // Get video poster if available
+      const video = document.querySelector('video');
+      const videoPoster = video ? video.poster : '';
+
+      return { images, caption, username, bodyText, videoPoster };
+    });
+
+    console.log(`📸 Puppeteer extracted: username="${data.username}", images=${data.images.length}, caption="${(data.caption || '').slice(0, 80)}..."`);
+
+    // Build synthetic HTML with OG tags for the main parser
+    const bestImage = data.videoPoster || (data.images.length > 0 ? data.images[data.images.length - 1] : '');
+    const captionText = data.caption || data.bodyText.slice(0, 1000);
+
+    const syntheticHtml = `<!DOCTYPE html><html><head>
+      <meta property="og:image" content="${bestImage}" />
+      <meta property="og:title" content="${data.username ? data.username + ' on Instagram' : 'Instagram Post'}" />
+      <meta property="og:description" content="${captionText.replace(/"/g, '&quot;').slice(0, 1000)}" />
+      <meta property="og:site_name" content="Instagram" />
+      <meta property="og:video" content="true" />
+      <title>${data.username || 'Instagram'} - Recipe Video</title>
+    </head><body>${captionText}</body></html>`;
+
+    return syntheticHtml;
+  } catch (err) {
+    console.log(`⚠️ Puppeteer Instagram fetch failed: ${err.message}`);
+    return '';
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
 }
 
 /**
