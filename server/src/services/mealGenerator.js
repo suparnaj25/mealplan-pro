@@ -60,6 +60,7 @@ const MEAL_MACRO_PROPORTIONS = {
   lunch: 0.35,
   dinner: 0.35,
   snack: 0.05,
+  beverage: 0.03,
 };
 
 /**
@@ -381,6 +382,7 @@ async function generateMealPlan(preferences) {
   if (mealStructure.lunch) mealTypes.push('lunch');
   if (mealStructure.dinner) mealTypes.push('dinner');
   if (mealStructure.snacks) mealTypes.push('snack');
+  if (mealStructure.beverages) mealTypes.push('beverage');
 
   // Daily macro targets from user preferences
   const dailyTargets = {
@@ -861,6 +863,7 @@ async function generateJointPlan(preferences, prefilledItems) {
   if (mealStructure.lunch) mealTypes.push('lunch');
   if (mealStructure.dinner) mealTypes.push('dinner');
   if (mealStructure.snacks) mealTypes.push('snack');
+  if (mealStructure.beverages) mealTypes.push('beverage');
 
   const dailyTargets = {
     calories: macros?.calories || 2000,
@@ -1037,36 +1040,59 @@ async function generateJointPlan(preferences, prefilledItems) {
       }
     }
 
-    // Snack injection: if after filling all empty slots, the day is still >15% below calorie target
-    // or >20% below protein target, add a snack suggestion
-    const totalUsedCal = (dailyTargets.calories - budget.calories) + runningUsed.calories;
-    const totalUsedProt = (dailyTargets.protein - budget.protein) + runningUsed.protein;
-    const calGapPct = (dailyTargets.calories - totalUsedCal) / dailyTargets.calories;
-    const protGapPct = (dailyTargets.protein - totalUsedProt) / dailyTargets.protein;
+    // Multi-snack injection: keep adding snacks until the day is within 10% of calorie target
+    // and within 15% of protein target, up to 3 extra snacks max
+    let totalUsedCal = (dailyTargets.calories - budget.calories) + runningUsed.calories;
+    let totalUsedProt = (dailyTargets.protein - budget.protein) + runningUsed.protein;
+    let totalUsedCarbs = (dailyTargets.carbs - budget.carbs) + runningUsed.carbs;
+    let totalUsedFat = (dailyTargets.fat - budget.fat) + runningUsed.fat;
+    let extraSnacks = 0;
+    const MAX_EXTRA_SNACKS = 3;
 
-    if ((calGapPct > 0.15 || protGapPct > 0.20) && !emptySlots.includes('snack')) {
+    while (extraSnacks < MAX_EXTRA_SNACKS) {
+      const calGapPct = (dailyTargets.calories - totalUsedCal) / dailyTargets.calories;
+      const protGapPct = (dailyTargets.protein - totalUsedProt) / dailyTargets.protein;
+
+      // Stop if we're close enough to targets
+      if (calGapPct <= 0.10 && protGapPct <= 0.15) break;
+
       const snackTarget = {
         calories: Math.max(50, dailyTargets.calories - totalUsedCal),
         protein: Math.max(3, dailyTargets.protein - totalUsedProt),
-        carbs: Math.max(3, dailyTargets.carbs - ((dailyTargets.carbs - budget.carbs) + runningUsed.carbs)),
-        fat: Math.max(1, dailyTargets.fat - ((dailyTargets.fat - budget.fat) + runningUsed.fat)),
+        carbs: Math.max(3, dailyTargets.carbs - totalUsedCarbs),
+        fat: Math.max(1, dailyTargets.fat - totalUsedFat),
       };
 
-      const snackRecipes = (recipeCache['snack'] || []).filter(r => !usedRecipeIds.has(r.id));
-      if (snackRecipes.length > 0) {
-        const snackScored = snackRecipes.map(recipe => {
-          const nutrition = parseJSON(recipe.nutrition, {});
-          return { recipe, score: scoreRecipeNutrition(nutrition, snackTarget), nutrition };
-        }).sort((a, b) => a.score - b.score);
-
-        const snackPick = snackScored[0];
-        if (snackPick) {
-          usedRecipeIds.add(snackPick.recipe.id);
-          items.push({ dayOfWeek: day, mealType: 'snack', recipeId: snackPick.recipe.id, servings: householdSize, scaleFactor: 1.0 });
-          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-          console.log(`  🍎 ${days[day]}: Added snack suggestion to fill ${Math.round(calGapPct * 100)}% calorie gap / ${Math.round(protGapPct * 100)}% protein gap`);
-        }
+      // Ensure snack recipes are in cache even if snack wasn't in the original meal types
+      if (!recipeCache['snack']) {
+        let snackRecs = db.prepare('SELECT id, cuisine, diet_tags, ingredients, nutrition, name FROM recipes WHERE meal_type = ?').all('snack');
+        if (restrictions.length > 0) snackRecs = snackRecs.filter(r => recipePassesRestrictions(r, restrictions));
+        recipeCache['snack'] = snackRecs;
       }
+
+      const snackRecipes = (recipeCache['snack'] || []).filter(r => !usedRecipeIds.has(r.id));
+      if (snackRecipes.length === 0) break;
+
+      const snackScored = snackRecipes.map(recipe => {
+        const nutrition = parseJSON(recipe.nutrition, {});
+        return { recipe, score: scoreRecipeNutrition(nutrition, snackTarget), nutrition };
+      }).sort((a, b) => a.score - b.score);
+
+      const snackPick = snackScored[0];
+      if (!snackPick) break;
+
+      usedRecipeIds.add(snackPick.recipe.id);
+      items.push({ dayOfWeek: day, mealType: 'snack', recipeId: snackPick.recipe.id, servings: householdSize, scaleFactor: 1.0 });
+
+      totalUsedCal += snackPick.nutrition.calories || 0;
+      totalUsedProt += snackPick.nutrition.protein || 0;
+      totalUsedCarbs += snackPick.nutrition.carbs || 0;
+      totalUsedFat += snackPick.nutrition.fat || 0;
+      extraSnacks++;
+
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const newCalGap = (dailyTargets.calories - totalUsedCal) / dailyTargets.calories;
+      console.log(`  🍎 ${days[day]}: Added snack #${extraSnacks} to fill macro gap (${Math.round(newCalGap * 100)}% cal gap remaining)`);
     }
   }
 

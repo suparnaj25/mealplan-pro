@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame, Sparkles, Camera, Sunrise, Sun, Moon, Cookie, UtensilsCrossed } from 'lucide-react';
+import { Activity, Check, X, Plus, ChevronLeft, ChevronRight, SkipForward, Edit3, Trash2, Scale, Trophy, Flame, Sparkles, Camera, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Coffee } from 'lucide-react';
 import { api } from '../services/api';
 
 const MealIcon = ({ type, size = 18, className = '' }) => {
-  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie };
+  const icons = { breakfast: Sunrise, lunch: Sun, dinner: Moon, snack: Cookie, beverage: Coffee };
   const Icon = icons[type] || UtensilsCrossed;
   return <Icon size={size} className={className} />;
 };
@@ -194,7 +194,7 @@ export default function DailyTracker() {
 
   // Group logs by meal type
   const grouped = {};
-  for (const mt of ['breakfast', 'lunch', 'dinner', 'snack']) {
+  for (const mt of ['breakfast', 'lunch', 'dinner', 'snack', 'beverage']) {
     grouped[mt] = (data?.logs || []).filter(l => l.meal_type === mt);
   }
 
@@ -252,7 +252,7 @@ export default function DailyTracker() {
           </motion.div>
 
           {/* Meal sections */}
-          {['breakfast', 'lunch', 'dinner', 'snack'].map(mealType => (
+          {['breakfast', 'lunch', 'dinner', 'snack', 'beverage'].map(mealType => (
             <motion.div key={mealType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
                 <MealIcon type={mealType} size={18} className="text-brand-500" />
@@ -469,6 +469,7 @@ export default function DailyTracker() {
                   <option value="lunch">Lunch</option>
                   <option value="dinner">Dinner</option>
                   <option value="snack">Snack</option>
+                  <option value="beverage">Beverage</option>
                 </select>
 
                 {/* Food search with autocomplete */}
