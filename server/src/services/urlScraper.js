@@ -240,8 +240,18 @@ async function fetchInstagramEmbed(url) {
 
     return syntheticHtml;
   } catch (err) {
-    console.log(`⚠️ Puppeteer Instagram fetch failed: ${err.message}`);
-    return '';
+    console.error(`⚠️ Puppeteer Instagram fetch failed: ${err.message}`);
+    console.error(err.stack);
+    // Graceful fallback: return minimal synthetic HTML so AI can still try with just the URL context
+    const shortcodeMatch2 = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+    const fallbackHtml = `<!DOCTYPE html><html><head>
+      <meta property="og:title" content="Instagram Reel" />
+      <meta property="og:description" content="Instagram video post${shortcodeMatch2 ? ' (shortcode: ' + shortcodeMatch2[2] + ')' : ''}" />
+      <meta property="og:site_name" content="Instagram" />
+      <meta property="og:video" content="true" />
+      <title>Instagram Recipe Video</title>
+    </head><body>Instagram recipe video from ${url}</body></html>`;
+    return fallbackHtml;
   } finally {
     if (page) await page.close().catch(() => {});
   }
