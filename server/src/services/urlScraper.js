@@ -1,5 +1,6 @@
 const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -7,9 +8,13 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 let _browser = null;
 async function getBrowser() {
   if (!_browser || !_browser.isConnected()) {
+    // @sparticuz/chromium provides a bundled Chromium that works on cloud platforms (Render, AWS Lambda, etc.)
+    const executablePath = await chromium.executablePath();
     _browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
     });
   }
   return _browser;
@@ -235,8 +240,18 @@ async function fetchInstagramEmbed(url) {
 
     return syntheticHtml;
   } catch (err) {
-    console.log(`⚠️ Puppeteer Instagram fetch failed: ${err.message}`);
-    return '';
+    console.error(`⚠️ Puppeteer Instagram fetch failed: ${err.message}`);
+    console.error(err.stack);
+    // Graceful fallback: return minimal synthetic HTML so AI can still try with just the URL context
+    const shortcodeMatch2 = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+    const fallbackHtml = `<!DOCTYPE html><html><head>
+      <meta property="og:title" content="Instagram Reel" />
+      <meta property="og:description" content="Instagram video post${shortcodeMatch2 ? ' (shortcode: ' + shortcodeMatch2[2] + ')' : ''}" />
+      <meta property="og:site_name" content="Instagram" />
+      <meta property="og:video" content="true" />
+      <title>Instagram Recipe Video</title>
+    </head><body>Instagram recipe video from ${url}</body></html>`;
+    return fallbackHtml;
   } finally {
     if (page) await page.close().catch(() => {});
   }
