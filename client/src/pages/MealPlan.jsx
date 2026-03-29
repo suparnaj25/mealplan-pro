@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2 } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2, Camera } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -614,6 +614,57 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const photoInputRef = useRef(null);
+
+  // Handle photo capture/upload → AI analyze → add as prefilled meal
+  const handlePhotoCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeSlot) return;
+    // Reset file input so same file can be re-selected
+    if (photoInputRef.current) photoInputRef.current.value = '';
+
+    setAnalyzingPhoto(true);
+    try {
+      // Convert to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:image/...;base64,
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Call AI photo analysis endpoint
+      const result = await api.aiAnalyzePhoto(base64);
+      if (result && result.foods && result.foods.length > 0) {
+        // Use the first identified food
+        const food = result.foods[0];
+        addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
+          name: food.name || 'Identified meal',
+          calories: food.calories || 0,
+          protein: food.protein || 0,
+          carbs: food.carbs || 0,
+          fat: food.fat || 0,
+        });
+      } else if (result && result.name) {
+        // Alternative response format
+        addPrefilled(activeSlot.dayOfWeek, activeSlot.mealType, {
+          name: result.name,
+          calories: result.calories || result.nutrition?.calories || 0,
+          protein: result.protein || result.nutrition?.protein || 0,
+          carbs: result.carbs || result.nutrition?.carbs || 0,
+          fat: result.fat || result.nutrition?.fat || 0,
+        });
+      } else {
+        alert('Could not identify the food in the photo. Please try again or search manually.');
+      }
+    } catch (err) {
+      console.error('Photo analysis failed:', err);
+      alert('Failed to analyze photo. Please try searching manually.');
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
 
   const MEAL_TYPES = [
     { key: 'breakfast', label: 'Breakfast', Icon: Sunrise },
@@ -826,12 +877,42 @@ function GeneratePlanModal({ genMealTypes, setGenMealTypes, onClose, onGenerateF
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={`Search food for ${activeSlot.mealType}...`}
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder={`Search or 📷 snap a photo...`}
+                            className="w-full pl-9 pr-12 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             autoFocus
                           />
-                          {searching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
+                          {/* Camera button inside the input */}
+                          <button
+                            type="button"
+                            onClick={() => photoInputRef.current?.click()}
+                            disabled={analyzingPhoto}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-500 transition-all"
+                            title="Take or upload a photo of your meal"
+                          >
+                            {analyzingPhoto ? (
+                              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Camera size={14} />
+                            )}
+                          </button>
+                          {/* Hidden file input for photo capture */}
+                          <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handlePhotoCapture}
+                            className="hidden"
+                          />
+                          {searching && <div className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
                         </div>
+                        {/* Photo analyzing indicator */}
+                        {analyzingPhoto && (
+                          <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs text-blue-600 dark:text-blue-400">Analyzing your photo with AI...</span>
+                          </div>
+                        )}
                         {searchResults.length > 0 && (
                           <div className="mt-1 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-800">
                             {searchResults.map((food, i) => (
