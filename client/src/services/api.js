@@ -93,6 +93,12 @@ class ApiService {
   generateJointPlan(weekStart, prefilled) {
     return this.request('/meals/generate-joint', { method: 'POST', body: JSON.stringify({ weekStart, prefilled }) });
   }
+  overrideMeal(planId, itemId, recipeName, recipeId, nutrition) {
+    return this.request('/meals/override', { method: 'POST', body: JSON.stringify({ planId, itemId, recipeName, recipeId, nutrition }) });
+  }
+  removeOverride(planId, itemId) {
+    return this.request('/meals/remove-override', { method: 'POST', body: JSON.stringify({ planId, itemId }) });
+  }
   updateMealPlanItem(planId, itemId, data) {
     return this.request(`/meals/plan/${planId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
   }

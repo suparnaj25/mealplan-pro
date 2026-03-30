@@ -14,30 +14,94 @@ router.get('/plan', (req, res) => {
     const { weekStart } = req.query;
     if (!weekStart) return res.status(400).json({ error: 'weekStart required' });
 
-    const plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
-    if (!plan) return res.json({ plan: null, items: [] });
+    // Check if user is in a family — look for shared family plan first
+    const user = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    let plan = null;
+    let isSharedPlan = false;
+
+    if (user?.family_id) {
+      // Look for a family shared plan for this week
+      plan = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(user.family_id, weekStart);
+      if (plan) isSharedPlan = true;
+    }
+
+    // Fall back to personal plan
+    if (!plan) {
+      plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ? AND (family_id IS NULL OR family_id = ?)').get(req.user.id, weekStart, user?.family_id || '');
+    }
+
+    if (!plan) return res.json({ plan: null, items: [], isSharedPlan: false });
 
     // Fetch items — LEFT JOIN so custom meals (no recipe_id) still appear
+    // Filter: shared items (user_id IS NULL) + personal items for this user (beverages)
     const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
-      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week`).all(plan.id);
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id 
+      WHERE mpi.meal_plan_id = ? AND (mpi.user_id IS NULL OR mpi.user_id = ?)
+      ORDER BY mpi.day_of_week`).all(plan.id, req.user.id);
 
-    res.json({ plan, items: items.map(i => {
-      const isCustom = !!i.custom_name && !i.recipe_id;
-      const sf = i.scale_factor || 1.0;
-      // For custom user-provided meals, use custom_nutrition; for recipes, use recipe nutrition
-      const nutrition = isCustom ? parseJSON(i.custom_nutrition, {}) : parseJSON(i.nutrition, {});
+    // Load per-user overrides for this plan
+    const overrides = isSharedPlan ? db.prepare('SELECT * FROM meal_plan_overrides WHERE meal_plan_id = ? AND user_id = ?').all(plan.id, req.user.id) : [];
+    const overrideMap = {};
+    for (const ov of overrides) { overrideMap[ov.original_item_id] = ov; }
+
+    // Get user's personal macros for scale factor calculation
+    const userMacros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id);
+    // Get plan creator's macros for comparison
+    const creatorMacros = isSharedPlan && plan.user_id !== req.user.id
+      ? db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(plan.user_id)
+      : null;
+
+    // Calculate personal scale factor: ratio of user's calorie target to creator's
+    let personalScaleFactor = 1.0;
+    if (creatorMacros && userMacros && creatorMacros.calories && userMacros.calories) {
+      personalScaleFactor = userMacros.calories / creatorMacros.calories;
+    }
+
+    res.json({ plan: { ...plan, isSharedPlan }, items: items.map(i => {
+      // Check if this item has a personal override
+      const override = overrideMap[i.id];
+      
+      const isCustom = override 
+        ? (!!override.custom_name && !override.recipe_id)
+        : (!!i.custom_name && !i.recipe_id);
+      
+      let sf = i.scale_factor || 1.0;
+      // Apply personal scale factor for shared plans (non-beverage meals)
+      if (isSharedPlan && plan.user_id !== req.user.id && i.meal_type !== 'beverage') {
+        sf = sf * personalScaleFactor;
+      }
+      if (override) sf = override.scale_factor || sf;
+
+      let nutrition, recipeName;
+      if (override) {
+        // Use override data
+        if (override.recipe_id) {
+          const overrideRecipe = db.prepare('SELECT name, nutrition FROM recipes WHERE id = ?').get(override.recipe_id);
+          nutrition = overrideRecipe ? parseJSON(overrideRecipe.nutrition, {}) : {};
+          recipeName = overrideRecipe?.name || override.custom_name || 'Override';
+        } else {
+          nutrition = parseJSON(override.custom_nutrition, {});
+          recipeName = override.custom_name || 'Override';
+        }
+      } else {
+        nutrition = isCustom ? parseJSON(i.custom_nutrition, {}) : parseJSON(i.nutrition, {});
+        recipeName = isCustom ? i.custom_name : (i.recipe_name || i.custom_name || 'Unknown');
+      }
+
       const ingredients = isCustom ? [] : parseJSON(i.ingredients, []);
       return {
         ...i,
-        recipe_name: isCustom ? i.custom_name : (i.recipe_name || i.custom_name || 'Unknown'),
+        recipe_name: recipeName,
         nutrition: { calories: Math.round((nutrition.calories || 0) * sf), protein: Math.round((nutrition.protein || 0) * sf), carbs: Math.round((nutrition.carbs || 0) * sf), fat: Math.round((nutrition.fat || 0) * sf), fiber: Math.round((nutrition.fiber || 0) * sf) },
         ingredients: ingredients.map(ing => ({ ...ing, quantity: Math.round(((ing.quantity || 1) / (i.recipe_servings || 4)) * (i.servings || 1) * sf * 10) / 10 })),
         instructions: parseJSON(i.instructions, []),
         locked: !!i.locked,
         is_user_provided: !!i.is_user_provided,
-        scale_factor: sf,
+        scale_factor: Math.round(sf * 100) / 100,
+        has_override: !!override,
+        is_shared: isSharedPlan && !i.user_id,
       };
-    }) });
+    }), isSharedPlan });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -65,8 +129,20 @@ router.post('/generate', async (req, res) => {
       db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
     }
 
+    // If user is in a family, also delete any existing family plan for this week
+    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    if (userInfo?.family_id) {
+      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      if (existingFamily && (!existing || existingFamily.id !== existing?.id)) {
+        db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ?').run(existingFamily.id);
+        db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingFamily.id);
+        db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingFamily.id);
+      }
+    }
+
     const planId = uuidv4();
-    db.prepare('INSERT INTO meal_plans (id, user_id, week_start_date) VALUES (?, ?, ?)').run(planId, req.user.id, weekStart);
+    // Tag with family_id so partner sees the same plan
+    db.prepare('INSERT INTO meal_plans (id, user_id, week_start_date, family_id, created_by_name) VALUES (?, ?, ?, ?, ?)').run(planId, req.user.id, weekStart, userInfo?.family_id || null, userInfo?.name || null);
 
     const insert = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const item of generatedItems) {
@@ -240,8 +316,19 @@ router.post('/generate-joint', async (req, res) => {
       db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
     }
 
+    // If user is in a family, also delete any existing family plan for this week
+    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    if (userInfo?.family_id) {
+      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      if (existingFamily && (!existing || existingFamily.id !== existing?.id)) {
+        db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ?').run(existingFamily.id);
+        db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingFamily.id);
+        db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingFamily.id);
+      }
+    }
+
     const planId = uuidv4();
-    db.prepare("INSERT INTO meal_plans (id, user_id, week_start_date, plan_mode) VALUES (?, ?, ?, 'joint')").run(planId, req.user.id, weekStart);
+    db.prepare("INSERT INTO meal_plans (id, user_id, week_start_date, plan_mode, family_id, created_by_name) VALUES (?, ?, ?, 'joint', ?, ?)").run(planId, req.user.id, weekStart, userInfo?.family_id || null, userInfo?.name || null);
 
     // Insert prefilled (user-provided) meals first
     const insertFull = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, servings, scale_factor, is_user_provided, locked, custom_name, custom_nutrition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -291,15 +378,70 @@ router.post('/generate-joint', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Helper: check if user owns or is in the family of a plan
+function userCanAccessPlan(planId, userId) {
+  const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(planId);
+  if (!plan) return null;
+  if (plan.user_id === userId) return plan;
+  // Check if user is in the same family
+  if (plan.family_id) {
+    const user = db.prepare('SELECT family_id FROM users WHERE id = ?').get(userId);
+    if (user?.family_id === plan.family_id) return plan;
+  }
+  return null;
+}
+
 // POST /api/meals/skip — skip a meal (remove from plan)
 router.post('/skip', (req, res) => {
   try {
     const { planId, itemId } = req.body;
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    const plan = userCanAccessPlan(planId, req.user.id);
     if (!plan) return res.status(404).json({ error: 'Not found' });
 
     db.prepare('DELETE FROM meal_plan_items WHERE id = ? AND meal_plan_id = ?').run(itemId, planId);
     res.json({ success: true, skippedItemId: itemId });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/meals/override — create a personal override for a shared meal (just for this user)
+router.post('/override', (req, res) => {
+  try {
+    const { planId, itemId, recipeName, recipeId, nutrition } = req.body;
+    if (!planId || !itemId) return res.status(400).json({ error: 'planId and itemId required' });
+
+    const plan = userCanAccessPlan(planId, req.user.id);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    // Check item exists
+    const item = db.prepare('SELECT id FROM meal_plan_items WHERE id = ? AND meal_plan_id = ?').get(itemId, planId);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    // Upsert override
+    const existing = db.prepare('SELECT id FROM meal_plan_overrides WHERE meal_plan_id = ? AND original_item_id = ? AND user_id = ?')
+      .get(planId, itemId, req.user.id);
+
+    if (existing) {
+      db.prepare('UPDATE meal_plan_overrides SET recipe_id = ?, custom_name = ?, custom_nutrition = ? WHERE id = ?')
+        .run(recipeId || null, recipeName || null, nutrition ? JSON.stringify(nutrition) : null, existing.id);
+    } else {
+      db.prepare('INSERT INTO meal_plan_overrides (id, meal_plan_id, original_item_id, user_id, recipe_id, custom_name, custom_nutrition) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(uuidv4(), planId, itemId, req.user.id, recipeId || null, recipeName || null, nutrition ? JSON.stringify(nutrition) : null);
+    }
+
+    res.json({ success: true, message: 'Personal override saved' });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/meals/override — remove a personal override (revert to shared meal)
+router.post('/remove-override', (req, res) => {
+  try {
+    const { planId, itemId } = req.body;
+    if (!planId || !itemId) return res.status(400).json({ error: 'planId and itemId required' });
+
+    db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ? AND original_item_id = ? AND user_id = ?')
+      .run(planId, itemId, req.user.id);
+
+    res.json({ success: true, message: 'Override removed, reverted to shared meal' });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
