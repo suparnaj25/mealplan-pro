@@ -110,6 +110,39 @@ router.post('/generate', async (req, res) => {
     const { weekStart } = req.body;
     if (!weekStart) return res.status(400).json({ error: 'weekStart required' });
 
+    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+
+    // ── Family guard: if a shared family plan already exists for this week
+    //    and this user did NOT create it, return it instead of overwriting ──
+    if (userInfo?.family_id) {
+      const existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      if (existingFamily && existingFamily.user_id !== req.user.id) {
+        // Partner already created a plan — return it via the GET logic
+        const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
+          FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id 
+          WHERE mpi.meal_plan_id = ? AND (mpi.user_id IS NULL OR mpi.user_id = ?)
+          ORDER BY mpi.day_of_week`).all(existingFamily.id, req.user.id);
+
+        const responseItems = items.map(i => {
+          const sf = i.scale_factor || 1.0;
+          const isCustom = !!i.custom_name && !i.recipe_id;
+          const nutrition = isCustom ? parseJSON(i.custom_nutrition, {}) : parseJSON(i.nutrition, {});
+          return {
+            ...i,
+            recipe_name: isCustom ? i.custom_name : (i.recipe_name || i.custom_name || 'Unknown'),
+            nutrition: { calories: Math.round((nutrition.calories || 0) * sf), protein: Math.round((nutrition.protein || 0) * sf), carbs: Math.round((nutrition.carbs || 0) * sf), fat: Math.round((nutrition.fat || 0) * sf), fiber: Math.round((nutrition.fiber || 0) * sf) },
+            ingredients: isCustom ? [] : parseJSON(i.ingredients, []),
+            instructions: parseJSON(i.instructions, []),
+            locked: !!i.locked,
+            is_user_provided: !!i.is_user_provided,
+            scale_factor: sf,
+            is_shared: true,
+          };
+        });
+        return res.json({ plan: { ...existingFamily, isSharedPlan: true }, items: responseItems, isSharedPlan: true, message: `${existingFamily.created_by_name || 'Your partner'} already created a plan for this week — showing their shared plan.` });
+      }
+    }
+
     const dietPrefs = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id) || {};
     const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id) || {};
     const ingredientPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id) || {};
@@ -122,17 +155,16 @@ router.post('/generate', async (req, res) => {
     const preferences = { userId: req.user.id, diets: dietPrefs, macros, ingredients: ingredientPrefs, cuisines: cuisinePrefs, mealStructure, householdSize };
     const generatedItems = await generateMealPlan(preferences);
 
-    // Delete existing
+    // Delete existing personal plan for this week
     const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStart);
     if (existing) {
       db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existing.id);
       db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
     }
 
-    // If user is in a family, also delete any existing family plan for this week
-    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    // If user is the creator of an existing family plan for this week, replace it
     if (userInfo?.family_id) {
-      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ? AND user_id = ?').get(userInfo.family_id, weekStart, req.user.id);
       if (existingFamily && (!existing || existingFamily.id !== existing?.id)) {
         db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ?').run(existingFamily.id);
         db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingFamily.id);
@@ -295,6 +327,15 @@ router.post('/generate-joint', async (req, res) => {
       return res.status(400).json({ error: 'At least one prefilled meal is required for joint plan' });
     }
 
+    // ── Family guard: don't overwrite partner's plan ──
+    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    if (userInfo?.family_id) {
+      const existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      if (existingFamily && existingFamily.user_id !== req.user.id) {
+        return res.status(409).json({ error: `${existingFamily.created_by_name || 'Your partner'} already created a plan for this week. View their shared plan instead.` });
+      }
+    }
+
     const dietPrefs = db.prepare('SELECT * FROM user_diet_preferences WHERE user_id = ?').get(req.user.id) || {};
     const macros = db.prepare('SELECT * FROM user_macros WHERE user_id = ?').get(req.user.id) || {};
     const ingredientPrefs = db.prepare('SELECT * FROM user_ingredient_preferences WHERE user_id = ?').get(req.user.id) || {};
@@ -316,10 +357,9 @@ router.post('/generate-joint', async (req, res) => {
       db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
     }
 
-    // If user is in a family, also delete any existing family plan for this week
-    const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
+    // If user is the creator of an existing family plan for this week, replace it
     if (userInfo?.family_id) {
-      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      const existingFamily = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ? AND user_id = ?').get(userInfo.family_id, weekStart, req.user.id);
       if (existingFamily && (!existing || existingFamily.id !== existing?.id)) {
         db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ?').run(existingFamily.id);
         db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingFamily.id);
