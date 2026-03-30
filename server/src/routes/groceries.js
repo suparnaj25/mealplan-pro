@@ -22,7 +22,15 @@ router.post('/generate', (req, res) => {
     const { mealPlanId } = req.body;
     if (!mealPlanId) return res.status(400).json({ error: 'mealPlanId required' });
 
-    const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ? AND user_id = ?').get(mealPlanId, userId);
+    // Family-aware: allow partner to generate grocery list from shared plan
+    let plan = db.prepare('SELECT * FROM meal_plans WHERE id = ? AND user_id = ?').get(mealPlanId, userId);
+    if (!plan) {
+      // Check if user is in the same family as the plan
+      const user = db.prepare('SELECT family_id FROM users WHERE id = ?').get(userId);
+      if (user?.family_id) {
+        plan = db.prepare('SELECT * FROM meal_plans WHERE id = ? AND family_id = ?').get(mealPlanId, user.family_id);
+      }
+    }
     if (!plan) return res.status(404).json({ error: 'Not found' });
 
     const planItems = db.prepare('SELECT mpi.servings, mpi.scale_factor, r.ingredients, r.servings as recipe_servings FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id WHERE mpi.meal_plan_id = ?').all(mealPlanId);

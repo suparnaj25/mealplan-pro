@@ -52,8 +52,14 @@ router.post('/sync-plan', (req, res) => {
     weekStart.setDate(d.getDate() - dayOfWeek);
     const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth()+1).padStart(2,'0')}-${String(weekStart.getDate()).padStart(2,'0')}`;
 
-    // Find meal plan for this week
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStartStr);
+    // Find meal plan for this week (family-aware: check shared plans too)
+    let plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(req.user.id, weekStartStr);
+    if (!plan) {
+      const user = db.prepare('SELECT family_id FROM users WHERE id = ?').get(req.user.id);
+      if (user?.family_id) {
+        plan = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(user.family_id, weekStartStr);
+      }
+    }
     if (!plan) return res.json({ synced: 0, message: 'No meal plan for this week' });
 
     // Get planned meals for this day

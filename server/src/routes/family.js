@@ -99,9 +99,9 @@ router.post('/leave', (req, res) => {
 
     const family = db.prepare('SELECT * FROM families WHERE id = ?').get(user.family_id);
     
-    // Remove member
+    // Remove member and reset their household_size to 1
     db.prepare('DELETE FROM family_members WHERE family_id = ? AND user_id = ?').run(user.family_id, req.user.id);
-    db.prepare('UPDATE users SET family_id = NULL WHERE id = ?').run(req.user.id);
+    db.prepare('UPDATE users SET family_id = NULL, household_size = 1 WHERE id = ?').run(req.user.id);
 
     // If admin left and family still has members, promote next member
     if (family?.created_by === req.user.id) {
