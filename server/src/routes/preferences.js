@@ -10,7 +10,7 @@ router.get('/', (req, res) => {
   try {
     const userId = req.user.id;
     const profile = db.prepare('SELECT name, household_size, budget_preference, onboarding_completed FROM users WHERE id = ?').get(userId) || {};
-    const mealStructure = db.prepare('SELECT breakfast, lunch, dinner, snacks FROM user_meal_structure WHERE user_id = ?').get(userId) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0 };
+    const mealStructure = db.prepare('SELECT breakfast, lunch, dinner, snacks, beverages FROM user_meal_structure WHERE user_id = ?').get(userId) || { breakfast: 1, lunch: 1, dinner: 1, snacks: 0, beverages: 0 };
     const diets = db.prepare('SELECT diets, custom_diet, allergies, restrictions FROM user_diet_preferences WHERE user_id = ?').get(userId);
     const macros = db.prepare('SELECT calories, protein_g, carbs_g, fat_g, fiber_g, sodium_mg, sugar_g, macro_preset FROM user_macros WHERE user_id = ?').get(userId);
     const ingredients = db.prepare('SELECT disliked_ingredients, loved_ingredients FROM user_ingredient_preferences WHERE user_id = ?').get(userId);
@@ -42,9 +42,9 @@ router.put('/profile', (req, res) => {
     const { name, householdSize, budgetPreference } = req.body;
     db.prepare('UPDATE users SET name = ?, household_size = ?, budget_preference = ?, updated_at = datetime(\'now\') WHERE id = ?').run(name, householdSize || 1, budgetPreference || 'moderate', userId);
 
-    const { breakfast = true, lunch = true, dinner = true, snacks = false } = req.body.mealStructure || {};
-    db.prepare('INSERT INTO user_meal_structure (id, user_id, breakfast, lunch, dinner, snacks) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET breakfast=?, lunch=?, dinner=?, snacks=?')
-      .run(uuidv4(), userId, breakfast?1:0, lunch?1:0, dinner?1:0, snacks?1:0, breakfast?1:0, lunch?1:0, dinner?1:0, snacks?1:0);
+    const { breakfast = true, lunch = true, dinner = true, snacks = false, beverages = false } = req.body.mealStructure || {};
+    db.prepare('INSERT INTO user_meal_structure (id, user_id, breakfast, lunch, dinner, snacks, beverages) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET breakfast=?, lunch=?, dinner=?, snacks=?, beverages=?')
+      .run(uuidv4(), userId, breakfast?1:0, lunch?1:0, dinner?1:0, snacks?1:0, beverages?1:0, breakfast?1:0, lunch?1:0, dinner?1:0, snacks?1:0, beverages?1:0);
     res.json({ success: true });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });

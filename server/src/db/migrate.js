@@ -288,6 +288,8 @@ try {
   `); } catch(e) { /* table already exists */ }
   // Per-member beverage items (beverages are personal, not shared)
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN user_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Add beverages column to user_meal_structure (was missing — needed for beverage meal type)
+  try { db.exec('ALTER TABLE user_meal_structure ADD COLUMN beverages INTEGER DEFAULT 0'); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

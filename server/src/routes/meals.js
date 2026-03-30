@@ -25,9 +25,9 @@ router.get('/plan', (req, res) => {
       if (plan) isSharedPlan = true;
     }
 
-    // Fall back to personal plan
+    // Fall back to personal plan (no family, or family plan not found)
     if (!plan) {
-      plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ? AND (family_id IS NULL OR family_id = ?)').get(req.user.id, weekStart, user?.family_id || '');
+      plan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ? AND family_id IS NULL').get(req.user.id, weekStart);
     }
 
     if (!plan) return res.json({ plan: null, items: [], isSharedPlan: false });
@@ -178,7 +178,7 @@ router.post('/generate', async (req, res) => {
 router.put('/plan/:planId/items/:itemId', (req, res) => {
   try {
     const { planId, itemId } = req.params;
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    const plan = userCanAccessPlan(planId, req.user.id);
     if (!plan) return res.status(404).json({ error: 'Not found' });
 
     const { recipeId, locked, servings } = req.body;
@@ -195,7 +195,7 @@ router.post('/copy', (req, res) => {
     const { planId, recipeId, dayOfWeek, mealType } = req.body;
     if (!planId || !recipeId) return res.status(400).json({ error: 'planId and recipeId required' });
     
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    const plan = userCanAccessPlan(planId, req.user.id);
     if (!plan) return res.status(404).json({ error: 'Plan not found' });
 
     // Check if same recipe already exists for this day/meal
@@ -219,7 +219,7 @@ router.post('/copy', (req, res) => {
 router.post('/regenerate-slot', (req, res) => {
   try {
     const { planId, itemId } = req.body;
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, req.user.id);
+    const plan = userCanAccessPlan(planId, req.user.id);
     if (!plan) return res.status(404).json({ error: 'Not found' });
 
     const item = db.prepare('SELECT * FROM meal_plan_items WHERE id = ? AND meal_plan_id = ?').get(itemId, planId);
