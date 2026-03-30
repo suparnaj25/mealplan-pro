@@ -268,6 +268,26 @@ try {
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN is_user_provided INTEGER DEFAULT 0'); } catch(e) { /* column already exists */ }
   try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN custom_name TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
   try { db.exec("ALTER TABLE meal_plan_items ADD COLUMN custom_nutrition TEXT DEFAULT NULL"); } catch(e) { /* column already exists */ }
+  // Shared family meal plans
+  try { db.exec('ALTER TABLE meal_plans ADD COLUMN family_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  try { db.exec('ALTER TABLE meal_plans ADD COLUMN created_by_name TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
+  // Per-member overrides: a family member can override a specific meal slot with their own recipe
+  try { db.exec(`
+    CREATE TABLE IF NOT EXISTS meal_plan_overrides (
+      id TEXT PRIMARY KEY,
+      meal_plan_id TEXT REFERENCES meal_plans(id) ON DELETE CASCADE,
+      original_item_id TEXT REFERENCES meal_plan_items(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      recipe_id TEXT REFERENCES recipes(id),
+      custom_name TEXT,
+      custom_nutrition TEXT,
+      scale_factor REAL DEFAULT 1.0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(meal_plan_id, original_item_id, user_id)
+    );
+  `); } catch(e) { /* table already exists */ }
+  // Per-member beverage items (beverages are personal, not shared)
+  try { db.exec('ALTER TABLE meal_plan_items ADD COLUMN user_id TEXT DEFAULT NULL'); } catch(e) { /* column already exists */ }
   console.log('✅ Migrations completed successfully');
 } catch (error) {
   console.error('❌ Migration failed:', error.message);

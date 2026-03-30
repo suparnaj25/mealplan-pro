@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Plus, Check, Trash2, Camera, Coffee, GlassWater } from 'lucide-react';
+import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Users, Plus, Check, Trash2, Camera, Coffee, GlassWater, UserX, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -260,6 +260,25 @@ export default function MealPlan() {
         <button onClick={() => shiftWeek(1)} className="btn-ghost p-2"><ChevronRight size={20} /></button>
       </div>
 
+      {/* Shared Plan Banner */}
+      {plan?.isSharedPlan && (
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center flex-shrink-0">
+            <Users size={16} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">Shared Family Plan</p>
+            <p className="text-[11px] text-purple-500 dark:text-purple-400 truncate">
+              Created by {plan.created_by_name || 'a family member'} · Portions auto-adjusted to your goals
+            </p>
+          </div>
+          <span className="text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 px-2 py-1 rounded-full font-medium whitespace-nowrap">
+            {plan.user_id === (plan._currentUserId) ? 'You created this' : 'Synced'}
+          </span>
+        </motion.div>
+      )}
+
       {/* Loading */}
       {loading && (
         <div className="flex justify-center py-12">
@@ -348,8 +367,16 @@ export default function MealPlan() {
                         <span className="absolute bottom-2 left-3 text-[11px] font-semibold text-white/90 uppercase tracking-wide flex items-center gap-1.5">
                           <MealIcon type={item.meal_type} size={12} className="text-white/90" /> {item.meal_type}
                         </span>
-                        {/* User vs AI badge */}
-                        {item.is_user_provided ? (
+                        {/* User vs AI vs Shared badges */}
+                        {item.has_override ? (
+                          <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <UserX size={9} /> Your override
+                          </span>
+                        ) : item.is_shared ? (
+                          <span className="absolute top-2 right-2 bg-purple-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Users size={9} /> Shared
+                          </span>
+                        ) : item.is_user_provided ? (
                           <span className="absolute top-2 right-2 bg-blue-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                             <User size={9} /> Your meal
                           </span>
@@ -363,6 +390,29 @@ export default function MealPlan() {
                       <div className="flex items-center justify-between mb-1">
                         <div />
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                          {/* Override buttons for shared plans */}
+                          {item.is_shared && !item.has_override && (
+                            <button onClick={async () => {
+                              const newName = prompt(`Change "${item.recipe_name}" just for you?\n\nEnter the meal name you'd like instead (or cancel to keep shared):`, '');
+                              if (!newName) return;
+                              try {
+                                await api.overrideMeal(plan.id, item.id, newName, null, { calories: item.nutrition?.calories || 0, protein: item.nutrition?.protein || 0, carbs: item.nutrition?.carbs || 0, fat: item.nutrition?.fat || 0 });
+                                await loadPlan();
+                              } catch (err) { console.error(err); }
+                            }} className="p-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Change just for me">
+                              <UserX size={14} className="text-amber-500" />
+                            </button>
+                          )}
+                          {item.has_override && (
+                            <button onClick={async () => {
+                              try {
+                                await api.removeOverride(plan.id, item.id);
+                                await loadPlan();
+                              } catch (err) { console.error(err); }
+                            }} className="p-1 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors" title="Revert to shared meal">
+                              <RotateCcw size={14} className="text-purple-500" />
+                            </button>
+                          )}
                           <button onClick={() => handleToggleLock(item.id, item.locked)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title={item.locked ? 'Unlock — allow changes when regenerating' : 'Keep — protect this meal when regenerating'}>
                             {item.locked ? <Lock size={14} className="text-brand-500" /> : <Unlock size={14} className="text-gray-400" />}
                           </button>
