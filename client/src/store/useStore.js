@@ -58,7 +58,7 @@ export const useAuthStore = create((set, get) => ({
 export const useOnboardingStore = create((set) => ({
   step: 0,
   data: {
-    profile: { name: '', householdSize: 2, budgetPreference: 'moderate', mealStructure: { breakfast: true, lunch: true, dinner: true, snacks: false } },
+    profile: { name: '', householdSize: 2, budgetPreference: 'moderate', mealStructure: { breakfast: true, lunch: true, dinner: true, snacks: false, beverages: false } },
     diets: { diets: [], customDiet: '', allergies: [], restrictions: [] },
     macros: { calories: 2000, proteinG: 150, carbsG: 200, fatG: 67, macroPreset: 'balanced' },
     ingredients: { dislikedIngredients: [], lovedIngredients: [] },

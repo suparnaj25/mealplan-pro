@@ -1,5 +1,3 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Users, Plus, Check, Trash2, Camera, Coffee, GlassWater, UserX, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
@@ -140,19 +138,20 @@ export default function MealPlan() {
     const prevWeekStart = new Date(weekStart + 'T12:00:00');
     prevWeekStart.setDate(prevWeekStart.getDate() - 7);
     const prevWS = `${prevWeekStart.getFullYear()}-${String(prevWeekStart.getMonth() + 1).padStart(2, '0')}-${String(prevWeekStart.getDate()).padStart(2, '0')}`;
-    
+
     try {
       const prevData = await api.getMealPlan(prevWS);
       if (!prevData.plan || !prevData.items?.length) {
         alert('No meal plan found for the previous week.');
         return;
       }
-      // Generate current week first (to create plan), then copy items
-      const data = await api.generateMealPlan(weekStart);
+      // Clone the previous week's plan (preserving exact recipes) into the current week
+      const data = await api.cloneMealPlan(prevWS, weekStart);
       setPlan(data.plan);
       setItems(data.items || []);
     } catch (err) {
       console.error(err);
+      alert(err.message || 'Failed to clone previous week.');
     }
   };
 
@@ -427,29 +426,8 @@ export default function MealPlan() {
                           </button>
                         </div>
                       </div>
-                      <p className="font-medium text-sm leading-tight group-hover:text-brand-500 transition-colors">{item.recipe_name}</p>
-                      {item.nutrition && (
-                        <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                          <span>{item.nutrition.calories} cal</span>
-                          <span>{item.nutrition.protein}g P</span>
-                          <span>{item.nutrition.carbs}g C</span>
-                          <span>{item.nutrition.fat}g F</span>
-                          {item.nutrition.fiber > 0 && <span>{item.nutrition.fiber}g Fib</span>}
-                        </div>
-                      )}
-                      {item.prep_time_minutes && (
-                        <div className="flex items-center gap-1 mt-1.5 text-xs text-gray-400">
-                          <Clock size={12} /> {item.prep_time_minutes + (item.cook_time_minutes || 0)} min
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1 mt-2 text-xs text-brand-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        See recipe details →
-                      </div>
-                      {/* Taste feedback reactions */}
-                      <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[10px] text-gray-400 mr-1">Rate:</span>
-                        {[
-                          { reaction: 'loved', Icon: Heart, label: 'Loved it', activeColor: 'text-rose-500' },
+                      <div className="flex items-center gap-0.5 mt-1" onClick={(e) => e.stopPropagation()}>
+                        {[{ reaction: 'loved', Icon: Heart, label: 'Loved it', activeColor: 'text-red-500' },
                           { reaction: 'liked', Icon: ThumbsUp, label: 'Liked it', activeColor: 'text-brand-500' },
                           { reaction: 'ok', Icon: Meh, label: 'It was ok', activeColor: 'text-amber-500' },
                           { reaction: 'disliked', Icon: ThumbsDown, label: 'Not for me', activeColor: 'text-gray-500' },
