@@ -408,10 +408,18 @@ async function generateMealPlan(preferences) {
   
   // 2-WEEK NO-REPEAT: Pre-load recipe IDs from the user's most recent plan(s)
   // so we don't repeat any meal from the last 2 weeks
+  // Also checks family plans so partner-created plans are included
   if (preferences.userId || diets?.user_id) {
     const uid = preferences.userId || diets.user_id;
     try {
+      // Get user's own recent plans
       const recentPlans = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? ORDER BY week_start_date DESC LIMIT 2').all(uid);
+      // Also get family plans (created by partner) for the same period
+      const userRow = db.prepare('SELECT family_id FROM users WHERE id = ?').get(uid);
+      if (userRow?.family_id) {
+        const familyPlans = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND user_id != ? ORDER BY week_start_date DESC LIMIT 2').all(userRow.family_id, uid);
+        recentPlans.push(...familyPlans);
+      }
       for (const rp of recentPlans) {
         const recentItems = db.prepare('SELECT recipe_id FROM meal_plan_items WHERE meal_plan_id = ?').all(rp.id);
         for (const ri of recentItems) {

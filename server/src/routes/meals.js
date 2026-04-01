@@ -485,4 +485,64 @@ router.post('/remove-override', (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Clone previous week's plan into a new week ──
+router.post('/clone', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sourceWeekStart, targetWeekStart } = req.body;
+    if (!sourceWeekStart || !targetWeekStart) return res.status(400).json({ error: 'sourceWeekStart and targetWeekStart required' });
+
+    // Find the source plan (own or family)
+    let sourcePlan = db.prepare('SELECT * FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, sourceWeekStart);
+    if (!sourcePlan) {
+      const user = db.prepare('SELECT family_id FROM users WHERE id = ?').get(userId);
+      if (user?.family_id) {
+        sourcePlan = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(user.family_id, sourceWeekStart);
+      }
+    }
+    if (!sourcePlan) return res.status(404).json({ error: 'Source plan not found' });
+
+    const sourceItems = db.prepare(`
+      SELECT mpi.*, r.name as recipe_name, r.nutrition, r.cuisine, r.image_url, r.ingredients as recipe_ingredients,
+             r.instructions as recipe_instructions, r.meal_type as recipe_meal_type, r.servings as recipe_servings,
+             r.prep_time_minutes, r.cook_time_minutes, r.diet_tags, r.description as recipe_description
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id
+      WHERE mpi.meal_plan_id = ?
+    `).all(sourcePlan.id);
+
+    if (!sourceItems.length) return res.status(404).json({ error: 'Source plan has no items' });
+
+    // Delete existing plan for target week
+    const existingTarget = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start_date = ?').get(userId, targetWeekStart);
+    if (existingTarget) {
+      db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(existingTarget.id);
+      db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existingTarget.id);
+    }
+
+    // Create new plan
+    const planId = uuidv4();
+    const userInfo = db.prepare('SELECT name, family_id FROM users WHERE id = ?').get(userId);
+    db.prepare('INSERT INTO meal_plans (id, user_id, week_start_date, plan_mode, family_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(planId, userId, targetWeekStart, sourcePlan.plan_mode || 'full', userInfo?.family_id || null, userInfo?.name || null);
+
+    // Clone items
+    const insertItem = db.prepare('INSERT INTO meal_plan_items (id, meal_plan_id, day_of_week, meal_type, recipe_id, locked, servings, scale_factor, is_user_provided, custom_name, custom_nutrition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const item of sourceItems) {
+      insertItem.run(uuidv4(), planId, item.day_of_week, item.meal_type, item.recipe_id, 0, item.servings, item.scale_factor || 1.0, item.is_user_provided || 0, item.custom_name || null, item.custom_nutrition || null);
+    }
+
+    // Fetch the new plan with full details
+    const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(planId);
+    const items = db.prepare(`
+      SELECT mpi.*, r.name as recipe_name, r.nutrition, r.cuisine, r.image_url, r.ingredients as recipe_ingredients,
+             r.instructions as recipe_instructions, r.meal_type as recipe_meal_type, r.servings as recipe_servings,
+             r.prep_time_minutes, r.cook_time_minutes, r.diet_tags, r.description as recipe_description
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id
+      WHERE mpi.meal_plan_id = ? ORDER BY mpi.day_of_week, mpi.meal_type
+    `).all(planId);
+
+    res.json({ plan, items });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;

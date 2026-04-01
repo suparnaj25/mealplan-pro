@@ -82,7 +82,18 @@ router.post('/generate', (req, res) => {
 router.get('/:listId', (req, res) => {
   try {
     if (req.params.listId === 'undefined') return res.json({ list: null, items: [] });
-    const list = db.prepare('SELECT * FROM grocery_lists WHERE id = ? AND user_id = ?').get(req.params.listId, req.user.id);
+    let list = db.prepare('SELECT * FROM grocery_lists WHERE id = ? AND user_id = ?').get(req.params.listId, req.user.id);
+    // Family-aware: allow partner to view grocery lists linked to shared meal plans
+    if (!list) {
+      const user = db.prepare('SELECT family_id FROM users WHERE id = ?').get(req.user.id);
+      if (user?.family_id) {
+        const candidateList = db.prepare('SELECT gl.* FROM grocery_lists gl WHERE gl.id = ?').get(req.params.listId);
+        if (candidateList?.meal_plan_id) {
+          const sharedPlan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND family_id = ?').get(candidateList.meal_plan_id, user.family_id);
+          if (sharedPlan) list = candidateList;
+        }
+      }
+    }
     if (!list) return res.status(404).json({ error: 'Not found' });
     const items = db.prepare('SELECT * FROM grocery_list_items WHERE grocery_list_id = ? ORDER BY category, name').all(req.params.listId);
     res.json({ list, items });

@@ -90,6 +90,10 @@ class ApiService {
   generateMealPlan(weekStart) {
     return this.request('/meals/generate', { method: 'POST', body: JSON.stringify({ weekStart }) });
   }
+
+  cloneMealPlan(sourceWeekStart, targetWeekStart) {
+    return this.request('/meals/clone', { method: 'POST', body: JSON.stringify({ sourceWeekStart, targetWeekStart }) });
+  }
   generateJointPlan(weekStart, prefilled) {
     return this.request('/meals/generate-joint', { method: 'POST', body: JSON.stringify({ weekStart, prefilled }) });
   }
