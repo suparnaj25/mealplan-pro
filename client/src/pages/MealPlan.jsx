@@ -1,3 +1,5 @@
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Shuffle, Lock, Unlock, ChevronLeft, ChevronRight, Sparkles, Clock, ShoppingCart, X, Repeat2, ChefHat, MoreVertical, CopyPlus, Heart, ThumbsUp, ThumbsDown, Meh, Sunrise, Sun, Moon, Cookie, UtensilsCrossed, Star, SmilePlus, Frown, FileText, ClipboardList, Search, User, Users, Plus, Check, Trash2, Camera, Coffee, GlassWater, UserX, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
 import AiResultSheet, { AiCard, AiSection, AiTag } from '../components/AiResultSheet';
