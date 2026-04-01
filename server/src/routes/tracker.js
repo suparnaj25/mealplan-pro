@@ -62,29 +62,56 @@ router.post('/sync-plan', (req, res) => {
     }
     if (!plan) return res.json({ synced: 0, message: 'No meal plan for this week' });
 
-    // Get planned meals for this day
+    // Get planned meals for this day (LEFT JOIN so user-provided/custom items aren't excluded)
     const planItems = db.prepare(`
-      SELECT mpi.meal_type, mpi.recipe_id, mpi.scale_factor, r.name, r.nutrition
-      FROM meal_plan_items mpi JOIN recipes r ON r.id = mpi.recipe_id
+      SELECT mpi.meal_type, mpi.recipe_id, mpi.scale_factor, mpi.custom_name, mpi.custom_nutrition, mpi.is_user_provided,
+             r.name AS recipe_name, r.nutrition AS recipe_nutrition
+      FROM meal_plan_items mpi LEFT JOIN recipes r ON r.id = mpi.recipe_id
       WHERE mpi.meal_plan_id = ? AND mpi.day_of_week = ?
     `).all(plan.id, dayOfWeek);
 
+    // Also check user_recipes table as a fallback for recipe names/nutrition
     let synced = 0;
     for (const item of planItems) {
-      // Check if already logged
-      const existing = db.prepare('SELECT id FROM meal_logs WHERE user_id = ? AND date = ? AND meal_type = ? AND recipe_id = ?').get(req.user.id, date, item.meal_type, item.recipe_id);
+      // Determine name and nutrition — prefer custom fields, fall back to recipe, then user_recipes
+      let name = item.custom_name || item.recipe_name;
+      let nutritionObj = {};
+
+      if (item.custom_nutrition) {
+        try { nutritionObj = JSON.parse(item.custom_nutrition); } catch {}
+      } else if (item.recipe_nutrition) {
+        try { nutritionObj = JSON.parse(item.recipe_nutrition); } catch {}
+      }
+
+      // If no name found yet, try user_recipes table
+      if (!name && item.recipe_id) {
+        try {
+          const ur = db.prepare('SELECT name, nutrition FROM user_recipes WHERE id = ?').get(item.recipe_id);
+          if (ur) {
+            name = ur.name;
+            if (!Object.keys(nutritionObj).length && ur.nutrition) {
+              try { nutritionObj = JSON.parse(ur.nutrition); } catch {}
+            }
+          }
+        } catch {}
+      }
+
+      if (!name) name = 'Planned meal';
+
+      // Use recipe_id for dedup if available, otherwise use name+meal_type
+      const recipeIdForDedup = item.recipe_id || `custom_${name}`;
+      const existing = db.prepare('SELECT id FROM meal_logs WHERE user_id = ? AND date = ? AND meal_type = ? AND (recipe_id = ? OR recipe_name = ?)').get(req.user.id, date, item.meal_type, item.recipe_id || '', name);
       if (existing) continue;
 
-      const nutrition = item.nutrition ? JSON.parse(item.nutrition) : {};
       const scale = item.scale_factor || 1.0;
 
       db.prepare('INSERT INTO meal_logs (id, user_id, date, meal_type, recipe_name, recipe_id, status, calories, protein_g, carbs_g, fat_g, fiber_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(uuidv4(), req.user.id, date, item.meal_type, item.name, item.recipe_id, 'planned',
-          Math.round((nutrition.calories || 0) * scale),
-          Math.round((nutrition.protein || 0) * scale),
-          Math.round((nutrition.carbs || 0) * scale),
-          Math.round((nutrition.fat || 0) * scale),
-          Math.round((nutrition.fiber || 0) * scale));
+        .run(uuidv4(), req.user.id, date, item.meal_type, name, item.recipe_id || null, 'planned',
+          Math.round((nutritionObj.calories || 0) * scale),
+          Math.round((nutritionObj.protein || 0) * scale),
+          Math.round((nutritionObj.carbs || 0) * scale),
+          Math.round((nutritionObj.fat || 0) * scale),
+          Math.round((nutritionObj.fiber || 0) * scale));
       synced++;
     }
 
