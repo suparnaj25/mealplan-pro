@@ -96,17 +96,21 @@ export default function DailyTracker() {
     } catch (err) { console.error(err); }
   };
 
+  const EMPTY_DATA = { logs: [], totals: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }, targets: { calories: 2000, protein: 150, carbs: 200, fat: 67, fiber: 25 } };
+
   const loadDay = async () => {
     setLoading(true);
-    try {
-      // Sync planned meals first (non-blocking — don't let sync failure prevent loading)
-      await api.syncPlan(date).catch(err => console.error('sync-plan failed:', err));
-    } catch (err) { console.error('sync-plan error:', err); }
+    // Sync planned meals first (non-blocking — don't let sync failure prevent loading)
+    try { await api.syncPlan(date); } catch (err) { console.error('sync-plan failed:', err); }
+    // Always load daily data, fallback to empty if it fails
     try {
       const result = await api.getDaily(date);
-      setData(result);
-    } catch (err) { console.error('getDaily error:', err); }
-    finally { setLoading(false); }
+      setData(result || EMPTY_DATA);
+    } catch (err) {
+      console.error('getDaily error:', err);
+      setData(EMPTY_DATA);
+    }
+    setLoading(false);
   };
 
   const handleStatusChange = async (logId, status) => {
