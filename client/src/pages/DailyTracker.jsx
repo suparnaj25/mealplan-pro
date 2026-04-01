@@ -99,11 +99,13 @@ export default function DailyTracker() {
   const loadDay = async () => {
     setLoading(true);
     try {
-      // Sync planned meals first
-      await api.syncPlan(date);
+      // Sync planned meals first (non-blocking — don't let sync failure prevent loading)
+      await api.syncPlan(date).catch(err => console.error('sync-plan failed:', err));
+    } catch (err) { console.error('sync-plan error:', err); }
+    try {
       const result = await api.getDaily(date);
       setData(result);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('getDaily error:', err); }
     finally { setLoading(false); }
   };
 
