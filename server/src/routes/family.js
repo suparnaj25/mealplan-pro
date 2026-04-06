@@ -55,6 +55,9 @@ router.post('/create', (req, res) => {
 
     db.prepare('UPDATE users SET family_id = ? WHERE id = ?').run(familyId, req.user.id);
 
+    // Retroactively tag existing untagged meal plans with the new family_id
+    db.prepare('UPDATE meal_plans SET family_id = ? WHERE user_id = ? AND family_id IS NULL').run(familyId, req.user.id);
+
     const family = db.prepare('SELECT * FROM families WHERE id = ?').get(familyId);
     res.json({ family, joinCode });
   } catch (error) {
@@ -79,6 +82,9 @@ router.post('/join', (req, res) => {
       .run(uuidv4(), family.id, req.user.id, 'member');
 
     db.prepare('UPDATE users SET family_id = ? WHERE id = ?').run(family.id, req.user.id);
+
+    // Retroactively tag the joining user's existing untagged meal plans with the family_id
+    db.prepare('UPDATE meal_plans SET family_id = ? WHERE user_id = ? AND family_id IS NULL').run(family.id, req.user.id);
 
     // Update household size for the family creator
     const memberCount = db.prepare('SELECT COUNT(*) as count FROM family_members WHERE family_id = ?').get(family.id);

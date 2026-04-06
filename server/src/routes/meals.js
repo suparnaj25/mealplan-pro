@@ -20,9 +20,34 @@ router.get('/plan', (req, res) => {
     let isSharedPlan = false;
 
     if (user?.family_id) {
-      // Look for a family shared plan for this week
-      plan = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(user.family_id, weekStart);
-      if (plan) isSharedPlan = true;
+      // Look for a family-tagged plan for this week (deterministic: oldest first = canonical)
+      plan = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ? ORDER BY created_at ASC LIMIT 1').get(user.family_id, weekStart);
+      if (plan) {
+        isSharedPlan = true;
+        // Clean up duplicates: if multiple family plans exist for same week, keep only the canonical one
+        const dupes = db.prepare('SELECT id FROM meal_plans WHERE family_id = ? AND week_start_date = ? AND id != ?').all(user.family_id, weekStart, plan.id);
+        for (const dupe of dupes) {
+          db.prepare('DELETE FROM meal_plan_overrides WHERE meal_plan_id = ?').run(dupe.id);
+          db.prepare('DELETE FROM meal_plan_items WHERE meal_plan_id = ?').run(dupe.id);
+          db.prepare('DELETE FROM meal_plans WHERE id = ?').run(dupe.id);
+        }
+      }
+
+      // If no family-tagged plan, check if any family member has an untagged plan for this week
+      if (!plan) {
+        const familyMembers = db.prepare('SELECT user_id FROM family_members WHERE family_id = ?').all(user.family_id);
+        const memberIds = familyMembers.map(m => m.user_id);
+        if (memberIds.length > 0) {
+          const placeholders = memberIds.map(() => '?').join(',');
+          const untagged = db.prepare(`SELECT * FROM meal_plans WHERE user_id IN (${placeholders}) AND week_start_date = ? AND family_id IS NULL ORDER BY created_at ASC LIMIT 1`).get(...memberIds, weekStart);
+          if (untagged) {
+            // Adopt this plan into the family so both partners see it going forward
+            db.prepare('UPDATE meal_plans SET family_id = ? WHERE id = ?').run(user.family_id, untagged.id);
+            plan = { ...untagged, family_id: user.family_id };
+            isSharedPlan = true;
+          }
+        }
+      }
     }
 
     // Fall back to personal plan (no family, or family plan not found)
@@ -115,7 +140,22 @@ router.post('/generate', async (req, res) => {
     // ── Family guard: if a shared family plan already exists for this week
     //    and this user did NOT create it, return it instead of overwriting ──
     if (userInfo?.family_id) {
-      const existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      // Check tagged family plans
+      let existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ? ORDER BY created_at ASC LIMIT 1').get(userInfo.family_id, weekStart);
+      // Also check untagged plans from family members
+      if (!existingFamily) {
+        const familyMembers = db.prepare('SELECT user_id FROM family_members WHERE family_id = ?').all(userInfo.family_id);
+        const otherMemberIds = familyMembers.map(m => m.user_id).filter(id => id !== req.user.id);
+        if (otherMemberIds.length > 0) {
+          const ph = otherMemberIds.map(() => '?').join(',');
+          existingFamily = db.prepare(`SELECT * FROM meal_plans WHERE user_id IN (${ph}) AND week_start_date = ? AND family_id IS NULL ORDER BY created_at ASC LIMIT 1`).get(...otherMemberIds, weekStart);
+          if (existingFamily) {
+            // Adopt into family
+            db.prepare('UPDATE meal_plans SET family_id = ? WHERE id = ?').run(userInfo.family_id, existingFamily.id);
+            existingFamily.family_id = userInfo.family_id;
+          }
+        }
+      }
       if (existingFamily && existingFamily.user_id !== req.user.id) {
         // Partner already created a plan — return it via the GET logic
         const items = db.prepare(`SELECT mpi.*, r.name as recipe_name, r.image_url, r.cuisine, r.prep_time_minutes, r.cook_time_minutes, r.nutrition, r.ingredients, r.instructions, r.servings as recipe_servings
@@ -330,7 +370,20 @@ router.post('/generate-joint', async (req, res) => {
     // ── Family guard: don't overwrite partner's plan ──
     const userInfo = db.prepare('SELECT family_id, name FROM users WHERE id = ?').get(req.user.id);
     if (userInfo?.family_id) {
-      const existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ?').get(userInfo.family_id, weekStart);
+      let existingFamily = db.prepare('SELECT * FROM meal_plans WHERE family_id = ? AND week_start_date = ? ORDER BY created_at ASC LIMIT 1').get(userInfo.family_id, weekStart);
+      // Also check untagged plans from other family members
+      if (!existingFamily) {
+        const familyMembers = db.prepare('SELECT user_id FROM family_members WHERE family_id = ?').all(userInfo.family_id);
+        const otherMemberIds = familyMembers.map(m => m.user_id).filter(id => id !== req.user.id);
+        if (otherMemberIds.length > 0) {
+          const ph = otherMemberIds.map(() => '?').join(',');
+          existingFamily = db.prepare(`SELECT * FROM meal_plans WHERE user_id IN (${ph}) AND week_start_date = ? AND family_id IS NULL ORDER BY created_at ASC LIMIT 1`).get(...otherMemberIds, weekStart);
+          if (existingFamily) {
+            db.prepare('UPDATE meal_plans SET family_id = ? WHERE id = ?').run(userInfo.family_id, existingFamily.id);
+            existingFamily.family_id = userInfo.family_id;
+          }
+        }
+      }
       if (existingFamily && existingFamily.user_id !== req.user.id) {
         return res.status(409).json({ error: `${existingFamily.created_by_name || 'Your partner'} already created a plan for this week. View their shared plan instead.` });
       }
